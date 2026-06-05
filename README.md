@@ -1,11 +1,13 @@
 # 🍊 HN Doom-Scroll
 
 A local dashboard that turns the Hacker News front page into a doom-scroll feed
-with AI-generated summaries of the actual articles. Mark stories as **read** or
-**not interested**, and they never show up again.
+with AI-generated summaries of the actual articles. Mark stories as **read**,
+**save** them for later, or flag them **not interested** — and they leave the
+feed. Search everything you've seen by keyword or meaning.
 
-Everything runs on your machine. SQLite for storage, your local Ollama model for
-summaries. No external services beyond fetching HN itself and the article pages.
+Everything runs on your machine. SQLite for storage, your local Ollama models
+for summaries and semantic search. No external services beyond fetching HN
+itself and the article pages.
 
 ## Screenshots
 
@@ -29,8 +31,11 @@ Semantic search ranks results by meaning, with a match score on each:
 ## Stack
 
 - **Backend:** Python + FastAPI
-- **Storage:** SQLite (`hn.db`, created automatically)
+- **Storage:** SQLite (`hn.db`, created automatically; also caches summaries and
+  semantic-search embeddings)
 - **Summaries:** local LLM via [Ollama](https://ollama.com) — model `llama3.2:3b`
+- **Semantic search:** local embedding model via Ollama — `nomic-embed-text`
+  (optional; keyword search works without it)
 - **Article extraction:** `trafilatura`, with a `playwright` headless-Chromium
   fallback for JS-heavy pages
 - **Frontend:** vanilla HTML/CSS/JS (no build step), infinite scroll
@@ -133,7 +138,8 @@ toggling is instant.
 
 ## Changing the model
 
-Edit `MODEL` at the top of `summarizer.py`. Good options for a CPU-only machine:
+Edit `MODEL` at the top of `summarizer.py` for summaries. Good options for a
+CPU-only machine:
 
 | Model | Notes |
 |-------|-------|
@@ -141,24 +147,34 @@ Edit `MODEL` at the top of `summarizer.py`. Good options for a CPU-only machine:
 | `qwen2.5:7b-instruct` | Higher quality, noticeably slower on CPU. |
 | `llama3.2:1b` | Fastest, lower quality. Good if 3b feels sluggish. |
 
-After changing it, run `ollama pull <model>` once.
+For semantic search, `EMBED_MODEL` (also in `summarizer.py`) controls the
+embedding model — default `nomic-embed-text`. After changing either, run
+`ollama pull <model>` once.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `app.py` | FastAPI app, routes, background summary worker |
-| `hn.py` | Hacker News API client |
-| `summarizer.py` | Article extraction + Ollama summarization |
-| `db.py` | SQLite schema and queries |
-| `static/` | Frontend (index.html, style.css, app.js) |
-| `run.bat` | One-click launcher |
+| `app.py` | FastAPI app, routes, on-demand summary + embedding generation |
+| `hn.py` | Hacker News API client (top stories + discussion text) |
+| `summarizer.py` | Article extraction, Ollama summarization, embeddings |
+| `db.py` | SQLite schema, queries, search, and dislike-learning |
+| `static/` | Frontend (`index.html`, `style.css`, `app.js`) |
+| `scripts/capture_screenshots.py` | Regenerates the README screenshots |
+| `docs/` | README screenshots |
+| `run.bat` | One-click launcher (sets up venv, deps, Playwright) |
+| `push-to-github.bat` | Publishes just this folder to its standalone GitHub repo |
+| `LICENSE` | MIT license |
 
 ## Notes
 
-- Paywalled, PDF, or heavily-JS pages can't always be extracted; those cards say
-  so and link straight to the article.
-- Ask HN / Show HN text posts have no external article, so they're labeled as
-  discussion threads.
+- When an article can't be fetched (paywall, PDF, or heavily-JS page), the app
+  falls back to summarizing the Hacker News discussion, and each card is badged
+  with where its summary came from (or why it couldn't be read).
+- Ask HN / Show HN text posts have no external article, so they're summarized
+  from the post and discussion directly.
 - The status pill in the header shows a green dot when Ollama is reachable, red
   when it isn't.
+- Summaries are generated on demand as cards scroll into view, and embeddings
+  for semantic search are computed at the same time (with a bounded backfill
+  when you run a semantic search).
