@@ -91,6 +91,9 @@ function cardHtml(s) {
     ? `<div class="skip-note">↓ You usually skip stories like this${reasons ? ` (${reasons})` : ""}</div>`
     : "";
   const stBadge = view === "search" ? stateBadge(s) : "";
+  const simBadge = (view === "search" && typeof s.similarity === "number")
+    ? `<span class="badge badge-sim" title="Semantic match score">${Math.round(s.similarity * 100)}% match</span>`
+    : "";
   return `
     <article class="card${downranked ? " downranked" : ""}" data-id="${s.id}" data-summary-status="${s.summary_status}">
       ${skipNote}
@@ -100,6 +103,7 @@ function cardHtml(s) {
         <span>${s.num_comments} comments</span>
         <span>${timeAgo(s.posted_at)}</span>
         ${stBadge}
+        ${simBadge}
       </div>
       <h2><a href="${link}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a></h2>
       ${summaryBlock(s)}
