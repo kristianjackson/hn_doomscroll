@@ -507,3 +507,12 @@ main {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* --- Re-embed control ------------------------------------------------------ */
+.reembed-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.reembed-status { font-size: 12px; color: var(--muted); }

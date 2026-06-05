@@ -152,7 +152,11 @@ Good summary models for a CPU-only machine:
 | `qwen2.5:7b-instruct` | Higher quality, noticeably slower on CPU. |
 | `llama3.2:1b` | Fastest, lower quality. Good if 3b feels sluggish. |
 
-For semantic search the default embedding model is `nomic-embed-text`.
+For semantic search the default embedding model is `nomic-embed-text`. If you
+switch the embedding model, use **Re-embed all stories** in the same Models
+section to regenerate every stored embedding with the new model so semantic
+search results stay consistent. It's optional and runs in the background —
+search keeps working while it does.
 
 The starting defaults live in `summarizer.py` (`DEFAULT_MODEL`,
 `DEFAULT_EMBED_MODEL`) if you want to change what a fresh install uses.

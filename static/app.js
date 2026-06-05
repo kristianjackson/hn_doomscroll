@@ -604,3 +604,59 @@ embedModelSelect.addEventListener("change", () => saveModel("embed_model", embed
 // Refresh the model list whenever Settings opens (models may have changed).
 settingsBtn.addEventListener("click", loadModels);
 loadModels();
+
+
+// --- Re-embed all (optional, e.g. after switching embedding model) -----------
+const reembedBtn = document.getElementById("reembed-btn");
+const reembedStatus = document.getElementById("reembed-status");
+let reembedPoll = null;
+
+function showReembed(s) {
+  if (s.running) {
+    reembedStatus.textContent = `Re-embedding ${s.done}/${s.total}…`;
+    reembedBtn.disabled = true;
+  } else if (s.done && s.total && s.done >= s.total) {
+    reembedStatus.textContent = `Done — re-embedded ${s.done}.`;
+    reembedBtn.disabled = false;
+  } else {
+    reembedStatus.textContent = "";
+    reembedBtn.disabled = false;
+  }
+}
+
+async function pollReembed() {
+  try {
+    const r = await fetch("/api/reembed");
+    const s = await r.json();
+    showReembed(s);
+    if (!s.running) { clearInterval(reembedPoll); reembedPoll = null; }
+  } catch {}
+}
+
+reembedBtn.addEventListener("click", async () => {
+  if (!confirm("Clear and regenerate all embeddings with the current model? "
+    + "Semantic search keeps working meanwhile.")) return;
+  reembedBtn.disabled = true;
+  reembedStatus.textContent = "Starting…";
+  try {
+    const r = await fetch("/api/reembed", { method: "POST" });
+    if (!r.ok) {
+      const err = await r.json();
+      reembedStatus.textContent = err.detail || "Couldn't start.";
+      reembedBtn.disabled = false;
+      return;
+    }
+    if (!reembedPoll) reembedPoll = setInterval(pollReembed, 1500);
+  } catch {
+    reembedStatus.textContent = "Couldn't reach the server.";
+    reembedBtn.disabled = false;
+  }
+});
+
+// If a job is already running when settings opens, resume showing progress.
+settingsBtn.addEventListener("click", () => {
+  fetch("/api/reembed").then((r) => r.json()).then((s) => {
+    showReembed(s);
+    if (s.running && !reembedPoll) reembedPoll = setInterval(pollReembed, 1500);
+  }).catch(() => {});
+});

@@ -21,6 +21,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 _summary_lock = asyncio.Lock()
 _summary_stats = {"done": 0, "last_error": None}
 
+# Tracks a running "re-embed all" job so the UI can show progress.
+_reembed_state = {"running": False, "done": 0, "total": 0}
+
 
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -253,6 +256,53 @@ async def api_set_models(payload: dict):
     if embed_model:
         db.set_setting("embed_model", embed_model)
     return {"ok": True, "model": summarizer.MODEL, "embed_model": summarizer.EMBED_MODEL}
+
+
+async def _reembed_worker():
+    """Clear and regenerate all embeddings with the current embedding model."""
+    import json
+    _reembed_state["running"] = True
+    try:
+        db.clear_all_embeddings()
+        # Pull everything that has a summary and re-embed it in batches.
+        while True:
+            batch = db.stories_missing_embedding(limit=20)
+            if not batch:
+                break
+            for s in batch:
+                async with _summary_lock:
+                    vec = await summarizer.embed_text(
+                        f"{s.get('title','')}\n\n{s.get('summary','')}"
+                    )
+                    if vec:
+                        db.set_embedding(s["id"], json.dumps(vec))
+                    else:
+                        # Embed model unavailable — stop rather than spin.
+                        return
+                _reembed_state["done"] += 1
+    finally:
+        _reembed_state["running"] = False
+
+
+@app.post("/api/reembed")
+async def api_reembed():
+    """Optionally re-embed every summarized story with the current model.
+
+    Useful after switching the embedding model so all vectors are comparable.
+    Runs in the background; poll /api/reembed for progress.
+    """
+    if _reembed_state["running"]:
+        raise HTTPException(409, "a re-embed job is already running")
+    if not await summarizer.embed_model_available():
+        raise HTTPException(400, "embedding model not available in Ollama")
+    _reembed_state.update({"running": True, "done": 0, "total": db.count_embeddable()})
+    asyncio.create_task(_reembed_worker())
+    return {"started": True, "total": _reembed_state["total"]}
+
+
+@app.get("/api/reembed")
+async def api_reembed_status():
+    return _reembed_state
 
 
 # --- static frontend -----------------------------------------------------------

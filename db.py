@@ -227,6 +227,29 @@ def stories_missing_embedding(limit: int = 40):
     return [dict(r) for r in rows]
 
 
+def clear_all_embeddings():
+    """Drop every stored embedding (e.g. after switching the embedding model).
+
+    Returns the number of stories that had an embedding cleared.
+    """
+    with _lock:
+        cur = _conn.execute(
+            "UPDATE stories SET embedding=NULL WHERE embedding IS NOT NULL"
+        )
+        _conn.commit()
+        return cur.rowcount
+
+
+def count_embeddable():
+    """How many stories have a summary that could be embedded."""
+    with _lock:
+        row = _conn.execute(
+            "SELECT COUNT(*) AS n FROM stories "
+            "WHERE summary_status IN ('done','skipped')"
+        ).fetchone()
+    return row["n"]
+
+
 def get_stories_by_ids(ids):
     if not ids:
         return []

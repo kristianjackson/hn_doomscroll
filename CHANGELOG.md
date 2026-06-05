@@ -5,7 +5,7 @@ All notable changes to HN Doom-Scroll are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.1] - 2026-06-05
 
 ### Added
 - **Model selection in Settings.** A new Models section lists the Ollama models
@@ -13,6 +13,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
   and the semantic-search embedding model from dropdowns. The choice is saved
   server-side in SQLite and persists across restarts; only installed models are
   selectable.
+- **Re-embed all stories** — an optional action in the Models section that
+  clears and regenerates every stored embedding with the current embedding
+  model (useful after switching it). Runs in the background with live progress;
+  semantic search keeps working meanwhile.
 
 ## [0.1.0] - 2026-06-05
 
@@ -61,4 +65,5 @@ iterated on in a single session.
 - Playwright and the `nomic-embed-text` model are both optional; the app
   degrades gracefully without them.
 
-[0.1.0]: https://github.com/kristianjackson/hn_doomscroll
+[0.1.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v0.1.1
+[0.1.0]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v0.1.0
