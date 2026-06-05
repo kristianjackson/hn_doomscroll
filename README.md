@@ -7,6 +7,18 @@ with AI-generated summaries of the actual articles. Mark stories as **read** or
 Everything runs on your machine. SQLite for storage, your local Ollama model for
 summaries. No external services beyond fetching HN itself and the article pages.
 
+## Screenshots
+
+The feed, in light and dark themes:
+
+| Light | Dark |
+|-------|------|
+| ![Feed, light theme](docs/feed-light.png) | ![Feed, dark theme](docs/feed-dark.png) |
+
+Settings — themes, auto-refresh, feed size, and keyword filters:
+
+![Settings panel](docs/settings.png)
+
 ## Stack
 
 - **Backend:** Python + FastAPI
