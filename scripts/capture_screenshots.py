@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
 URL = os.environ.get("HN_URL", "http://localhost:8000")
 DELAY = int(os.environ.get("SHOT_DELAY_MS", "2500"))
+SEARCH_QUERY = os.environ.get("SHOT_SEARCH_QUERY", "artificial intelligence")
 
 
 async def set_theme(page, theme):
@@ -70,6 +71,22 @@ async def main():
             await page.wait_for_timeout(500)
             await page.screenshot(path=str(DOCS / "settings.png"))
             print(f"saved {(DOCS / 'settings.png').relative_to(ROOT)}")
+
+            # Semantic search results (shows the match-percentage badges).
+            await set_theme(page, "light")
+            await page.reload(wait_until="networkidle")
+            await page.wait_for_selector("#search-input", timeout=15000)
+            # Switch to semantic mode if it isn't already.
+            mode = await page.inner_text("#search-mode")
+            if mode.strip().lower() != "ai":
+                await page.click("#search-mode")
+            await page.fill("#search-input", SEARCH_QUERY)
+            # Wait for results (cards) to render after the debounced search.
+            await page.wait_for_timeout(DELAY)
+            await page.wait_for_selector(".badge-sim", timeout=20000)
+            await page.wait_for_timeout(500)
+            await page.screenshot(path=str(DOCS / "search-semantic.png"))
+            print(f"saved {(DOCS / 'search-semantic.png').relative_to(ROOT)}")
         finally:
             await browser.close()
 

@@ -157,11 +157,11 @@ def get_by_state(state: str, limit: int = 100):
 
 
 def search(query: str, limit: int = 100):
-    """Full-text-ish search across every story, regardless of state.
+    """Keyword search across every story, ranked by relevance.
 
-    Matches the query against the title and summary (case-insensitive
-    substring). Lets you find something you read/saved/hid earlier. Results are
-    ordered by most-recently-touched so recent reads surface first.
+    Matches the query against title and summary (case-insensitive substring).
+    Title matches rank above summary-only matches; ties broken by most-recent.
+    Lets you find something you read/saved/hid earlier.
     """
     q = (query or "").strip().lower()
     if not q:
@@ -170,14 +170,21 @@ def search(query: str, limit: int = 100):
     with _lock:
         rows = _conn.execute(
             """
-            SELECT * FROM stories
+            SELECT *,
+                   CASE WHEN LOWER(title) LIKE ? THEN 0 ELSE 1 END AS _rank
+            FROM stories
             WHERE LOWER(title) LIKE ? OR LOWER(COALESCE(summary,'')) LIKE ?
-            ORDER BY updated_at DESC
+            ORDER BY _rank ASC, updated_at DESC
             LIMIT ?
             """,
-            (like, like, limit),
+            (like, like, like, limit),
         ).fetchall()
-    return [dict(r) for r in rows]
+    results = []
+    for r in rows:
+        d = dict(r)
+        d.pop("_rank", None)  # internal ranking helper, not part of the story
+        results.append(d)
+    return results
 
 
 # --- semantic search support ---------------------------------------------------

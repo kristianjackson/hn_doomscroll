@@ -19,6 +19,10 @@ Settings — themes, auto-refresh, feed size, and keyword filters:
 
 ![Settings panel](docs/settings.png)
 
+Semantic search ranks results by meaning, with a match score on each:
+
+![Semantic search results](docs/search-semantic.png)
+
 > Regenerate these anytime with the app running: `python scripts/capture_screenshots.py`
 > (uses Playwright; set `SHOT_DELAY_MS` higher if summaries need longer to fill in).
 
