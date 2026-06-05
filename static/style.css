@@ -1,0 +1,406 @@
+/* ---------------------------------------------------------------------------
+   Theming
+   Light is the default. Dark is applied either explicitly (data-theme="dark")
+   or when System is selected and the OS prefers dark.
+--------------------------------------------------------------------------- */
+:root,
+:root[data-theme="light"] {
+  --bg: #f6f6ef;          /* classic HN warm off-white */
+  --card: #ffffff;
+  --card-hover: #fbfbf8;
+  --text: #1a1a1a;
+  --muted: #767676;
+  --accent: #ff6600;
+  --green: #1a8a3a;
+  --red: #d12b2b;
+  --border: #e4e4dd;
+  --header-bg: rgba(246, 246, 239, 0.92);
+  --btn-bg: #ffffff;
+  --summary-text: #3a3a3a;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.09);
+  --overlay-bg: rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme="dark"] {
+  --bg: #0f1115;
+  --card: #1a1d24;
+  --card-hover: #20242d;
+  --text: #e6e8eb;
+  --muted: #8a909b;
+  --accent: #ff6600;
+  --green: #3fb950;
+  --red: #f85149;
+  --border: #2a2e37;
+  --header-bg: rgba(15, 17, 21, 0.92);
+  --btn-bg: transparent;
+  --summary-text: #c2c7cf;
+  --shadow: none;
+  --shadow-hover: 0 2px 10px rgba(0, 0, 0, 0.4);
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+}
+
+/* System: inherit the OS preference. */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --bg: #0f1115;
+    --card: #1a1d24;
+    --card-hover: #20242d;
+    --text: #e6e8eb;
+    --muted: #8a909b;
+    --accent: #ff6600;
+    --green: #3fb950;
+    --red: #f85149;
+    --border: #2a2e37;
+    --header-bg: rgba(15, 17, 21, 0.92);
+    --btn-bg: transparent;
+    --summary-text: #c2c7cf;
+    --shadow: none;
+    --shadow-hover: 0 2px 10px rgba(0, 0, 0, 0.4);
+    --overlay-bg: rgba(0, 0, 0, 0.6);
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+  transition: background 0.2s, color 0.2s;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--header-bg);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.bar {
+  max-width: 940px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+h1 { font-size: 18px; font-weight: 700; white-space: nowrap; }
+
+.tabs { display: flex; gap: 4px; flex-shrink: 0; }
+
+.tab {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.tab:hover { color: var(--text); }
+.tab.active { background: var(--card); color: var(--text); border-color: var(--border); }
+
+.actions { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+.status {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+
+#refresh, #settings-btn { flex-shrink: 0; }
+
+#refresh {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+#refresh:hover { filter: brightness(1.05); }
+#refresh:disabled { opacity: 0.5; cursor: default; }
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-btn:hover { color: var(--text); border-color: var(--muted); }
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+  transition: opacity 0.3s, transform 0.3s, box-shadow 0.2s;
+}
+.card:hover { box-shadow: var(--shadow-hover); }
+.card.leaving { opacity: 0; transform: translateX(40px); }
+
+.meta {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.meta .score { color: var(--accent); font-weight: 600; }
+.domain { color: var(--muted); }
+
+.card h2 { font-size: 17px; line-height: 1.35; margin-bottom: 10px; }
+.card h2 a { color: var(--text); text-decoration: none; }
+.card h2 a:hover { color: var(--accent); }
+
+.summary { font-size: 14px; color: var(--summary-text); margin-bottom: 14px; }
+.summary.pending { color: var(--muted); font-style: italic; }
+.summary.failed { color: var(--muted); }
+
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.btn {
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.btn:hover { color: var(--text); border-color: var(--muted); }
+.btn.read:hover { color: var(--green); border-color: var(--green); }
+.btn.hide:hover { color: var(--red); border-color: var(--red); }
+.btn.primary { color: var(--text); }
+
+.btn-link {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: none;
+  padding: 6px 4px;
+}
+.btn-link:hover { text-decoration: underline; }
+
+.spacer { margin-left: auto; }
+
+.loader, .empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 30px;
+  font-size: 14px;
+}
+.hidden { display: none; }
+
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+.dot.ok { background: var(--green); }
+.dot.off { background: var(--red); }
+
+/* --- Settings modal -------------------------------------------------------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+/* Must out-specify .overlay's display:flex so closing actually hides it. */
+.overlay.hidden { display: none; }
+
+.modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 440px;
+  padding: 22px 24px 26px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.modal-head h2 { font-size: 18px; font-weight: 700; }
+
+.setting-group h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.setting-hint { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+
+.theme-options { display: flex; gap: 12px; }
+
+.theme-card {
+  flex: 1;
+  background: var(--btn-bg);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  transition: border-color 0.15s, transform 0.1s;
+}
+.theme-card:hover { transform: translateY(-1px); }
+.theme-card.selected { border-color: var(--accent); }
+
+.theme-label { font-size: 13px; }
+
+.swatch {
+  width: 100%;
+  height: 40px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.swatch-light { background: #f6f6ef; }
+.swatch-dark { background: #0f1115; }
+.swatch-system {
+  background: linear-gradient(135deg, #f6f6ef 0 50%, #0f1115 50% 100%);
+}
+
+/* --- Settings: section spacing --------------------------------------------- */
+.setting-group + .setting-group {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+/* --- Toggle switch --------------------------------------------------------- */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.toggle { position: relative; display: inline-block; width: 40px; height: 22px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.track {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 999px;
+  transition: background 0.15s;
+}
+.track::before {
+  content: "";
+  position: absolute;
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.toggle input:checked + .track { background: var(--accent); }
+.toggle input:checked + .track::before { transform: translateX(18px); }
+
+.interval-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.interval-row.disabled { opacity: 0.4; pointer-events: none; }
+.interval-row select {
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* --- Keyword filters ------------------------------------------------------- */
+.filter-add { display: flex; gap: 8px; }
+.filter-add input {
+  flex: 1;
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 14px;
+}
+.filter-add input:focus { outline: none; border-color: var(--accent); }
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.filter-chips:empty::after {
+  content: "No filters yet.";
+  color: var(--muted);
+  font-size: 13px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 6px 4px 12px;
+  font-size: 13px;
+}
+.chip button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 50%;
+}
+.chip button:hover { color: var(--red); }
+
+/* --- Narrow screens: let the header wrap rather than overflow ------------- */
+@media (max-width: 560px) {
+  .bar { flex-wrap: wrap; }
+  .status { max-width: 100%; }
+}

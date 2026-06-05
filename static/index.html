@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HN Doom-Scroll</title>
+  <!-- Apply saved theme before paint to avoid a flash of the wrong colors. -->
+  <script>
+    (function () {
+      var t = localStorage.getItem("theme") || "system";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <h1>🍊 HN Doom-Scroll</h1>
+      <div class="tabs">
+        <button class="tab active" data-view="feed">Feed</button>
+        <button class="tab" data-view="read">Read</button>
+        <button class="tab" data-view="hidden">Hidden</button>
+      </div>
+      <div class="actions">
+        <span id="status" class="status"></span>
+        <button id="refresh" title="Fetch latest from Hacker News">↻ Refresh</button>
+        <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="feed"></main>
+
+  <div id="sentinel"></div>
+  <div id="loader" class="loader hidden">loading…</div>
+  <div id="empty" class="empty hidden"></div>
+
+  <!-- Settings modal -->
+  <div id="settings-overlay" class="overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-head">
+        <h2 id="settings-title">Settings</h2>
+        <button id="settings-close" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+
+      <section class="setting-group">
+        <h3>Appearance</h3>
+        <p class="setting-hint">Choose how HN Doom-Scroll looks. System follows your device setting.</p>
+        <div class="theme-options" id="theme-options">
+          <button class="theme-card" data-theme-choice="light">
+            <span class="swatch swatch-light"></span>
+            <span class="theme-label">Light</span>
+          </button>
+          <button class="theme-card" data-theme-choice="dark">
+            <span class="swatch swatch-dark"></span>
+            <span class="theme-label">Dark</span>
+          </button>
+          <button class="theme-card" data-theme-choice="system">
+            <span class="swatch swatch-system"></span>
+            <span class="theme-label">System</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="setting-group">
+        <h3>Auto-refresh</h3>
+        <p class="setting-hint">Automatically pull the latest front page on a timer.</p>
+        <label class="toggle-row">
+          <span class="toggle">
+            <input type="checkbox" id="autorefresh-toggle" />
+            <span class="track"></span>
+          </span>
+          <span>Enable auto-refresh</span>
+        </label>
+        <div class="interval-row" id="interval-row">
+          <label for="autorefresh-interval">Every</label>
+          <select id="autorefresh-interval">
+            <option value="5">5 minutes</option>
+            <option value="10">10 minutes</option>
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="60">1 hour</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="setting-group">
+        <h3>Feed size</h3>
+        <p class="setting-hint">How many top stories to pull from Hacker News on each refresh.</p>
+        <div class="interval-row">
+          <label for="feedsize-select">Fetch</label>
+          <select id="feedsize-select">
+            <option value="25">25 stories</option>
+            <option value="50">50 stories</option>
+            <option value="75">75 stories</option>
+            <option value="100">100 stories</option>
+            <option value="150">150 stories</option>
+            <option value="200">200 stories</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="setting-group">
+        <h3>Keyword filters</h3>
+        <p class="setting-hint">Hide any story whose title or summary contains these words. Applies to the whole feed.</p>
+        <form class="filter-add" id="filter-add">
+          <input type="text" id="filter-input" placeholder="e.g. crypto, layoffs"
+                 autocomplete="off" maxlength="60" />
+          <button type="submit" class="btn primary">Add</button>
+        </form>
+        <div class="filter-chips" id="filter-chips"></div>
+      </section>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
