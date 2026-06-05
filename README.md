@@ -19,6 +19,9 @@ Settings — themes, auto-refresh, feed size, and keyword filters:
 
 ![Settings panel](docs/settings.png)
 
+> Regenerate these anytime with the app running: `python scripts/capture_screenshots.py`
+> (uses Playwright; set `SHOT_DELAY_MS` higher if summaries need longer to fill in).
+
 ## Stack
 
 - **Backend:** Python + FastAPI
