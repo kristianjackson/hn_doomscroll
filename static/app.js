@@ -130,15 +130,23 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
-refreshBtn.addEventListener("click", async () => {
+let isRefreshing = false;
+
+async function manualRefresh() {
+  if (isRefreshing) return;
+  isRefreshing = true;
   refreshBtn.disabled = true;
   refreshBtn.textContent = "↻ Fetching…";
   await fetch(`/api/refresh?limit=${feedSize()}`, { method: "POST" });
   refreshBtn.disabled = false;
-  refreshBtn.textContent = "↻ Refresh";
+  isRefreshing = false;
   if (view === "feed") resetFeed();
   refreshStatus();
-});
+  if (typeof scheduleAutoRefresh === "function") scheduleAutoRefresh(); // reset countdown
+  updateRefreshLabel();
+}
+
+refreshBtn.addEventListener("click", manualRefresh);
 
 function updateStatus(counts) {
   if (!counts) return;
@@ -244,9 +252,7 @@ function autoRefreshMinutes() {
 }
 
 async function doRefresh() {
-  await fetch(`/api/refresh?limit=${feedSize()}`, { method: "POST" });
-  if (view === "feed") resetFeed();
-  refreshStatus();
+  await manualRefresh();
 }
 
 function scheduleAutoRefresh() {
@@ -255,9 +261,34 @@ function scheduleAutoRefresh() {
     autoRefreshTimer = null;
   }
   if (autoRefreshEnabled()) {
-    autoRefreshTimer = setInterval(doRefresh, autoRefreshMinutes() * 60 * 1000);
+    const ms = autoRefreshMinutes() * 60 * 1000;
+    nextRefreshAt = Date.now() + ms;
+    // doRefresh() -> manualRefresh() reschedules the next cycle on completion.
+    autoRefreshTimer = setInterval(doRefresh, ms);
+  } else {
+    nextRefreshAt = null;
+  }
+  updateRefreshLabel();
+}
+
+// --- Refresh button label (doubles as the auto-refresh countdown) -----------
+let nextRefreshAt = null;
+
+function updateRefreshLabel() {
+  if (isRefreshing) return; // don't clobber the "Fetching…" state
+  if (autoRefreshEnabled() && nextRefreshAt) {
+    let remaining = Math.max(0, Math.round((nextRefreshAt - Date.now()) / 1000));
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    refreshBtn.textContent = `↻ ${m}:${String(s).padStart(2, "0")}`;
+    refreshBtn.title = "Click to refresh now · auto-refresh on";
+  } else {
+    refreshBtn.textContent = "↻ Refresh";
+    refreshBtn.title = "Fetch latest from Hacker News";
   }
 }
+
+setInterval(updateRefreshLabel, 1000);
 
 function syncAutoRefreshUI() {
   autoToggle.checked = autoRefreshEnabled();

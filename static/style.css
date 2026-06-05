@@ -127,6 +127,9 @@ h1 { font-size: 18px; font-weight: 700; white-space: nowrap; }
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 92px;
+  text-align: center;
 }
 #refresh:hover { filter: brightness(1.05); }
 #refresh:disabled { opacity: 0.5; cursor: default; }

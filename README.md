@@ -38,8 +38,9 @@ summarizing them in the background.
   remember the choice. Hidden/read stories never reappear in the feed.
 - The **Read** and **Hidden** tabs let you review past choices and send a story
   back to the feed if you change your mind.
-- **↻ Refresh** pulls the latest front page. Already-seen stories keep their
-  state; only genuinely new stories get added.
+- The **↻ Refresh** button pulls the latest front page. Already-seen stories
+  keep their state; only genuinely new stories get added. When auto-refresh is
+  on, this button doubles as a live countdown to the next refresh (see below).
 
 ## Settings
 
@@ -56,6 +57,11 @@ there's no flash of the wrong theme on reload.
 Toggle on to automatically pull the latest front page on a timer. Pick an
 interval (5, 10, 15, 30, or 60 minutes). Default is 15. The setting is saved in
 the browser, so it persists across reloads.
+
+When auto-refresh is on, the header's **↻ Refresh** button turns into a live
+countdown (`↻ 4:59`) showing time until the next pull. Clicking it refreshes
+immediately and resets the timer. There's no separate timer or button — one
+control does both.
 
 ### Feed size
 Choose how many top stories to pull from Hacker News on each refresh (25, 50,
