@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS stories (
     rank            INTEGER DEFAULT 0,        -- position on the front page
     summary         TEXT,
     summary_status  TEXT    DEFAULT 'pending',-- pending | done | failed | skipped
-    state           TEXT    DEFAULT 'new',    -- new | read | hidden
+    summary_source  TEXT    DEFAULT '',       -- article | rendered | discussion | pdf | video | paywall | none
+    state           TEXT    DEFAULT 'new',    -- new | read | hidden | saved
     fetched_at      INTEGER DEFAULT (strftime('%s','now')),
     updated_at      INTEGER DEFAULT (strftime('%s','now'))
 );
@@ -40,6 +41,22 @@ CREATE TABLE IF NOT EXISTS filters (
 def init():
     with _lock:
         _conn.executescript(SCHEMA)
+        # Lightweight migration: add summary_source to pre-existing databases.
+        cols = [r["name"] for r in _conn.execute("PRAGMA table_info(stories)").fetchall()]
+        if "summary_source" not in cols:
+            _conn.execute("ALTER TABLE stories ADD COLUMN summary_source TEXT DEFAULT ''")
+        _conn.commit()
+
+
+def set_summary(story_id: int, summary: str, status: str, source: str = ""):
+    with _lock:
+        _conn.execute(
+            """UPDATE stories
+               SET summary=?, summary_status=?, summary_source=?,
+                   updated_at=strftime('%s','now')
+               WHERE id=?""",
+            (summary, status, source, story_id),
+        )
         _conn.commit()
 
 
@@ -67,6 +84,7 @@ def upsert_story(item: dict, rank: int):
 
 
 def stories_needing_summary(limit: int = 50):
+    """Stories that still need a summary (used for diagnostics / batch tools)."""
     with _lock:
         rows = _conn.execute(
             """
@@ -78,15 +96,6 @@ def stories_needing_summary(limit: int = 50):
             (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
-
-
-def set_summary(story_id: int, summary: str, status: str):
-    with _lock:
-        _conn.execute(
-            "UPDATE stories SET summary=?, summary_status=?, updated_at=strftime('%s','now') WHERE id=?",
-            (summary, status, story_id),
-        )
-        _conn.commit()
 
 
 def set_state(story_id: int, state: str):
@@ -124,6 +133,14 @@ def get_by_state(state: str, limit: int = 100):
     return [dict(r) for r in rows]
 
 
+def get_story(story_id: int):
+    with _lock:
+        row = _conn.execute(
+            "SELECT * FROM stories WHERE id=?", (story_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def counts():
     where, params = _filter_clause()
     with _lock:
@@ -144,7 +161,7 @@ def counts():
                 params,
             ).fetchone()["n"]
             filtered = total_new - visible
-    out = {"new": 0, "read": 0, "hidden": 0,
+    out = {"new": 0, "read": 0, "hidden": 0, "saved": 0,
            "pending_summaries": pending, "filtered": filtered}
     for r in rows:
         out[r["state"]] = r["n"]

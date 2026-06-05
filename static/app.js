@@ -26,11 +26,23 @@ function timeAgo(unix) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function sourceBadge(s) {
+  const map = {
+    discussion: '<span class="badge badge-info">💬 From HN discussion</span>',
+    rendered: '<span class="badge badge-info">🌐 Rendered page</span>',
+    pdf: '<span class="badge badge-warn">📄 PDF</span>',
+    video: '<span class="badge badge-warn">🎥 Video</span>',
+    paywall: '<span class="badge badge-warn">🔒 Paywalled</span>',
+  };
+  return map[s] || "";
+}
+
 function summaryBlock(s) {
+  const badge = sourceBadge(s.summary_source);
   if (s.summary_status === "done" || s.summary_status === "skipped")
-    return `<p class="summary">${escapeHtml(s.summary)}</p>`;
+    return `<p class="summary">${badge}${escapeHtml(s.summary)}</p>`;
   if (s.summary_status === "failed")
-    return `<p class="summary failed">${escapeHtml(s.summary || "No summary.")}</p>`;
+    return `<p class="summary failed">${badge}${escapeHtml(s.summary || "No summary.")}</p>`;
   return `<p class="summary pending">⏳ summarizing locally…</p>`;
 }
 
@@ -42,12 +54,20 @@ function escapeHtml(t) {
 
 function cardHtml(s) {
   const link = s.url || s.hn_url;
-  const actions = view === "feed"
-    ? `<button class="btn read" data-act="read">✓ Read</button>
-       <button class="btn hide" data-act="hide">✕ Not interested</button>`
-    : `<button class="btn" data-act="restore">↩ Back to feed</button>`;
+  let actions;
+  if (view === "feed") {
+    actions = `<button class="btn read" data-act="read">✓ Read</button>
+       <button class="btn save" data-act="save">★ Save</button>
+       <button class="btn hide" data-act="hide">✕ Not interested</button>`;
+  } else if (view === "saved") {
+    actions = `<button class="btn read" data-act="read">✓ Mark read</button>
+       <button class="btn" data-act="restore">↩ Back to feed</button>`;
+  } else {
+    actions = `<button class="btn save" data-act="save">★ Save</button>
+       <button class="btn" data-act="restore">↩ Back to feed</button>`;
+  }
   return `
-    <article class="card" data-id="${s.id}">
+    <article class="card" data-id="${s.id}" data-summary-status="${s.summary_status}">
       <div class="meta">
         <span class="score">▲ ${s.score}</span>
         <span class="domain">${domain(s.url)}</span>
@@ -90,10 +110,54 @@ async function loadMore() {
   if (stories.length < PAGE) exhausted = true;
 
   feedEl.insertAdjacentHTML("beforeend", stories.map(cardHtml).join(""));
+  // Observe newly-added cards that still need a summary.
+  feedEl.querySelectorAll(".card[data-summary-status='pending'], .card[data-summary-status='working'], .card[data-summary-status='failed']")
+    .forEach((card) => {
+      if (!card.dataset.observed) {
+        card.dataset.observed = "1";
+        summaryObserver.observe(card);
+      }
+    });
   offset += stories.length;
   loading = false;
   loaderEl.classList.add("hidden");
 }
+
+// On-demand summarization: ask the server to summarize a story only when its
+// card is near the viewport. Keeps the CPU-bound model focused on what you're
+// actually reading instead of grinding through the whole feed upfront.
+const inFlight = new Set();
+
+async function requestSummary(card) {
+  const id = card.dataset.id;
+  if (inFlight.has(id)) return;
+  const status = card.dataset.summaryStatus;
+  if (status === "done" || status === "skipped") return;
+  inFlight.add(id);
+  try {
+    const r = await fetch(`/api/summarize/${id}`, { method: "POST" });
+    if (!r.ok) return;
+    const s = await r.json();
+    card.dataset.summaryStatus = s.summary_status;
+    const cur = card.querySelector(".summary");
+    if (cur) cur.outerHTML = summaryBlock(s);
+    // If the model wasn't ready, leave it observed so it retries on next view.
+    if (s.summary_status === "done" || s.summary_status === "skipped" ||
+        s.summary_status === "failed") {
+      summaryObserver.unobserve(card);
+    }
+  } catch {
+    // network blip — leave observed so it retries when scrolled past again
+  } finally {
+    inFlight.delete(id);
+  }
+}
+
+const summaryObserver = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (entry.isIntersecting) requestSummary(entry.target);
+  }
+}, { rootMargin: "200px" });
 
 function resetFeed() {
   feedEl.innerHTML = "";
@@ -150,14 +214,12 @@ refreshBtn.addEventListener("click", manualRefresh);
 
 function updateStatus(counts) {
   if (!counts) return;
-  let pend = counts.pending_summaries
-    ? ` · ${counts.pending_summaries} summarizing` : "";
-  let filt = counts.filtered
-    ? ` · ${counts.filtered} filtered` : "";
+  let saved = counts.saved ? ` · ${counts.saved} saved` : "";
+  let filt = counts.filtered ? ` · ${counts.filtered} filtered` : "";
   statusEl.dataset.counts = JSON.stringify(counts);
   statusEl.innerHTML =
     `<span class="dot ${statusEl.dataset.ollama === "off" ? "off" : "ok"}"></span>` +
-    `${counts.new} new · ${counts.read} read${pend}${filt}`;
+    `${counts.new} new · ${counts.read} read${saved}${filt}`;
 }
 
 async function refreshStatus() {
@@ -166,28 +228,7 @@ async function refreshStatus() {
     const s = await r.json();
     statusEl.dataset.ollama = s.ollama ? "ok" : "off";
     updateStatus(s.counts);
-    // If summaries are still being generated, re-poll the visible feed.
-    if (view === "feed" && s.counts.pending_summaries > 0) {
-      hydrateSummaries();
-    }
   } catch {}
-}
-
-// Quietly refresh summary text for cards currently showing "pending".
-async function hydrateSummaries() {
-  const pendingCards = [...feedEl.querySelectorAll(".summary.pending")];
-  if (pendingCards.length === 0) return;
-  const r = await fetch(`/api/feed?limit=${offset || PAGE}&offset=0`);
-  const data = await r.json();
-  const byId = Object.fromEntries(data.stories.map((s) => [s.id, s]));
-  feedEl.querySelectorAll(".card").forEach((card) => {
-    const s = byId[card.dataset.id];
-    if (!s) return;
-    const cur = card.querySelector(".summary");
-    if (cur && cur.classList.contains("pending") && s.summary_status !== "pending") {
-      cur.outerHTML = summaryBlock(s);
-    }
-  });
 }
 
 new IntersectionObserver((entries) => {

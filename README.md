@@ -12,7 +12,8 @@ summaries. No external services beyond fetching HN itself and the article pages.
 - **Backend:** Python + FastAPI
 - **Storage:** SQLite (`hn.db`, created automatically)
 - **Summaries:** local LLM via [Ollama](https://ollama.com) — model `llama3.2:3b`
-- **Article extraction:** `trafilatura`
+- **Article extraction:** `trafilatura`, with a `playwright` headless-Chromium
+  fallback for JS-heavy pages
 - **Frontend:** vanilla HTML/CSS/JS (no build step), infinite scroll
 
 ## Quick start
@@ -22,22 +23,38 @@ summaries. No external services beyond fetching HN itself and the article pages.
    ollama pull llama3.2:3b
    ```
 2. Double-click **`run.bat`** (or run it from a terminal).
-   - First run sets up the virtualenv and installs dependencies.
+   - First run sets up the virtualenv, installs dependencies, and downloads the
+     Playwright Chromium browser (~150 MB, one time).
    - Your browser opens to http://localhost:8000.
 
-That's it. The app fetches the top 50 HN stories on first boot and starts
-summarizing them in the background.
+Playwright is optional — if the Chromium download fails or you skip it, the app
+still works; it just falls back to direct fetch and the HN-discussion summary
+for JS-heavy pages instead of rendering them.
+
+That's it. The app fetches the top 50 HN stories on first boot. Summaries are
+generated on demand as you scroll, using your local model.
 
 ## How it works
 
 - On startup it pulls the HN top stories and stores them in SQLite.
-- A background worker summarizes one article at a time (serial, to keep the
-  CPU-bound local model responsive). Cards show "summarizing locally…" until
-  their summary lands, then update in place.
-- **✓ Read** and **✕ Not interested** both remove a story from the feed and
-  remember the choice. Hidden/read stories never reappear in the feed.
-- The **Read** and **Hidden** tabs let you review past choices and send a story
-  back to the feed if you change your mind.
+- **Summaries are generated on demand.** As each card scrolls near the viewport,
+  the app asks the local model to summarize that article — so you see summaries
+  for what you're actually reading within seconds, and stories you never scroll
+  to (or hide) cost no compute. Generation is serialized so the CPU-bound model
+  handles one at a time. Cards show "summarizing locally…" until their summary
+  lands, then update in place.
+- **Article extraction is layered.** For each story the app tries, in order:
+  (1) a direct fetch with realistic browser headers, (2) a headless-Chromium
+  render via Playwright for JS-heavy pages, and (3) a fallback that summarizes
+  the **Hacker News discussion** when the article itself can't be retrieved.
+  A small badge shows where a summary came from — 💬 From HN discussion,
+  🌐 Rendered page — or why it couldn't be read — 🔒 Paywalled, 📄 PDF, 🎥 Video.
+- **✓ Read**, **★ Save**, and **✕ Not interested** each move a story out of the
+  feed and remember the choice. Read/saved/hidden stories never reappear in the
+  feed.
+- The **★ Saved**, **Read**, and **Hidden** tabs let you review past choices.
+  Saved is your read-it-later list; from any of these tabs you can send a story
+  back to the feed (or, from Saved, mark it read).
 - The **↻ Refresh** button pulls the latest front page. Already-seen stories
   keep their state; only genuinely new stories get added. When auto-refresh is
   on, this button doubles as a live countdown to the next refresh (see below).

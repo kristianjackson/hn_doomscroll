@@ -1,11 +1,43 @@
-"""Article extraction + local summarization via Ollama."""
+"""Article extraction + local summarization via Ollama.
+
+Extraction strategy (in order, stopping at the first success):
+  1. Direct HTTP fetch with realistic browser headers.
+  2. Playwright headless-Chromium render (for JS-heavy pages) — optional;
+     used only if installed.
+  3. Fall back to the Hacker News discussion text.
+
+Each story is labeled with where its summary came from, and known
+paywall/PDF/video cases are reported clearly instead of as generic failures.
+"""
 import asyncio
+from urllib.parse import urlparse
+
 import httpx
 import trafilatura
+
+import hn
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "llama3.2:3b"
 MAX_ARTICLE_CHARS = 8000  # keep the prompt small for a fast local model
+MIN_USEFUL_CHARS = 200    # less than this isn't a real article body
+
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+# Domains with hard paywalls / aggressive bot-blocking that a simple fetch
+# (and even headless render) won't beat. We label these rather than retry.
+PAYWALL_DOMAINS = {
+    "bloomberg.com", "wsj.com", "nytimes.com", "ft.com", "economist.com",
+    "reuters.com", "thetimes.co.uk", "newyorker.com", "wired.com",
+    "theatlantic.com", "medium.com",
+}
 
 PROMPT = (
     "Summarize the following article in 2-3 concise sentences for a tech-savvy "
@@ -14,28 +46,82 @@ PROMPT = (
     "TITLE: {title}\n\nARTICLE:\n{body}\n\nSUMMARY:"
 )
 
+DISCUSSION_PROMPT = (
+    "Below is a Hacker News discussion about an article titled \"{title}\". "
+    "The article itself couldn't be retrieved. Based only on the discussion, "
+    "summarize in 2-3 sentences what the article is likely about and what "
+    "commenters are focused on. Start with 'Based on the HN discussion,'.\n\n"
+    "DISCUSSION:\n{body}\n\nSUMMARY:"
+)
 
-async def extract_article(url: str) -> str | None:
-    """Download a URL and pull the main readable text out of it."""
+
+def _domain(url: str) -> str:
+    try:
+        return urlparse(url).hostname.replace("www.", "") if url else ""
+    except Exception:
+        return ""
+
+
+def _looks_like_pdf(url: str, content_type: str = "") -> bool:
+    return url.lower().endswith(".pdf") or "application/pdf" in content_type
+
+
+def _looks_like_video(url: str) -> bool:
+    d = _domain(url)
+    return any(
+        v in d for v in ("youtube.com", "youtu.be", "fb.watch", "vimeo.com")
+    ) or url.lower().endswith((".mp4", ".webm", ".mov"))
+
+
+async def _fetch_direct(url: str) -> str | None:
+    """Plain HTTP GET with browser-like headers; returns extracted text."""
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=25) as client:
-            r = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (HN-Doomscroll)"})
+            r = await client.get(url, headers=BROWSER_HEADERS)
+            if r.status_code in (401, 403, 429):
+                return None  # blocked — caller may try render or fall back
             r.raise_for_status()
             html = r.text
     except Exception:
         return None
-
     text = trafilatura.extract(html, include_comments=False, include_tables=False)
-    if not text:
+    if text and len(text.strip()) >= MIN_USEFUL_CHARS:
+        return text.strip()
+    return None
+
+
+async def _fetch_rendered(url: str) -> str | None:
+    """Render the page in headless Chromium (JS-heavy sites). Optional.
+
+    Returns None if Playwright isn't installed or rendering fails.
+    """
+    try:
+        from playwright.async_api import async_playwright
+    except Exception:
         return None
-    return text.strip()
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            try:
+                page = await browser.new_page(user_agent=BROWSER_HEADERS["User-Agent"])
+                await page.goto(url, wait_until="domcontentloaded", timeout=25000)
+                # Give client-side rendering a moment to populate content.
+                await page.wait_for_timeout(1500)
+                html = await page.content()
+            finally:
+                await browser.close()
+    except Exception:
+        return None
+    text = trafilatura.extract(html, include_comments=False, include_tables=False)
+    if text and len(text.strip()) >= MIN_USEFUL_CHARS:
+        return text.strip()
+    return None
 
 
-async def summarize_text(title: str, body: str) -> str | None:
-    body = body[:MAX_ARTICLE_CHARS]
+async def summarize_text(prompt: str) -> str | None:
     payload = {
         "model": MODEL,
-        "prompt": PROMPT.format(title=title, body=body),
+        "prompt": prompt,
         "stream": False,
         "options": {"temperature": 0.3, "num_predict": 220},
     }
@@ -50,29 +136,75 @@ async def summarize_text(title: str, body: str) -> str | None:
     return out or None
 
 
-async def summarize_story(story: dict) -> tuple[str, str]:
-    """Return (summary_text, status) for a story dict.
+async def _summarize_from_discussion(story: dict) -> tuple[str, str, str] | None:
+    """Fallback: summarize from the HN thread. Returns (text, status, source)."""
+    discussion = await hn.fetch_discussion_text(story["id"])
+    if not discussion or len(discussion) < MIN_USEFUL_CHARS:
+        return None
+    summary = await summarize_text(
+        DISCUSSION_PROMPT.format(title=story.get("title", ""),
+                                 body=discussion[:MAX_ARTICLE_CHARS])
+    )
+    if not summary:
+        return None
+    return (summary, "done", "discussion")
 
-    status is one of: done | skipped | failed | pending
-    'pending' is returned for transient model errors so the worker retries.
+
+async def summarize_story(story: dict) -> tuple[str, str, str]:
+    """Return (summary_text, status, source) for a story dict.
+
+    status: done | skipped | failed | pending
+    source: article | rendered | discussion | none
     """
     url = story.get("url")
     title = story.get("title", "")
 
-    # Ask HN / Show HN text posts have no external url.
+    # Ask HN / Show HN text posts: summarize the post + discussion directly.
     if not url:
-        return ("No external article (discussion thread on Hacker News).", "skipped")
+        viahn = await _summarize_from_discussion(story)
+        if viahn:
+            return viahn
+        return ("Discussion thread on Hacker News — open it to read.", "skipped", "none")
 
-    body = await extract_article(url)
-    if not body:
-        return ("Couldn't extract article text (paywall, PDF, or JS-heavy page). "
-                "Open the link to read it.", "failed")
+    # PDFs and videos: we can't read these. Try the discussion, else label clearly.
+    if _looks_like_pdf(url):
+        viahn = await _summarize_from_discussion(story)
+        return viahn or ("PDF document — open the link to read it.", "failed", "pdf")
+    if _looks_like_video(url):
+        viahn = await _summarize_from_discussion(story)
+        return viahn or ("Video link — open it to watch.", "failed", "video")
 
-    summary = await summarize_text(title, body)
-    if not summary:
-        # Likely the model is still loading or briefly unavailable — retry later.
-        return ("Waiting for local model…", "pending")
-    return (summary, "done")
+    # 1) Direct fetch with browser headers.
+    body = await _fetch_direct(url)
+    source = "article"
+
+    # 2) Headless render for JS-heavy pages (skip known hard paywalls).
+    if not body and _domain(url) not in PAYWALL_DOMAINS:
+        body = await _fetch_rendered(url)
+        if body:
+            source = "rendered"
+
+    # 3) Got article text? Summarize it.
+    if body:
+        summary = await summarize_text(
+            PROMPT.format(title=title, body=body[:MAX_ARTICLE_CHARS])
+        )
+        if not summary:
+            return ("Waiting for local model…", "pending", "none")
+        return (summary, "done", source)
+
+    # 4) Couldn't get the article — fall back to the HN discussion.
+    viahn = await _summarize_from_discussion(story)
+    if viahn:
+        return viahn
+
+    # 5) Nothing worked. Label the most likely reason.
+    if _domain(url) in PAYWALL_DOMAINS:
+        return (f"Paywalled ({_domain(url)}) — open the link to read it.",
+                "failed", "paywall")
+    return ("Couldn't extract article text (blocked or JS-heavy) and the HN "
+            "discussion was too thin to summarize. Open the link to read it.",
+            "failed", "none")
 
 
 async def ollama_available() -> bool:

@@ -6,6 +6,8 @@ if not exist ".venv\Scripts\python.exe" (
     python -m venv .venv
     .venv\Scripts\python.exe -m pip install --upgrade pip
     .venv\Scripts\python.exe -m pip install -r requirements.txt
+    echo Downloading Playwright Chromium browser (one time, ~150 MB)...
+    .venv\Scripts\python.exe -m playwright install chromium
 )
 echo.
 echo Starting HN Doom-Scroll at http://localhost:8000

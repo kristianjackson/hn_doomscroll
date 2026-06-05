@@ -16,59 +16,49 @@ import summarizer
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-# --- background summary worker -------------------------------------------------
-_worker_status = {"running": False, "last_error": None, "done": 0}
-
-
-async def summary_worker():
-    """Continuously turn 'pending' stories into summaries, one at a time.
-
-    Serial on purpose: a CPU-bound local model is happier without concurrent
-    generation requests fighting over cores.
-    """
-    _worker_status["running"] = True
-    while True:
-        batch = db.stories_needing_summary(limit=10)
-        if not batch:
-            await asyncio.sleep(5)
-            continue
-        # Don't burn through the queue if the model server is down — wait for it.
-        if not await summarizer.ollama_available():
-            _worker_status["last_error"] = "Ollama unreachable; waiting…"
-            await asyncio.sleep(10)
-            continue
-        for story in batch:
-            try:
-                text, status = await summarizer.summarize_story(story)
-                db.set_summary(story["id"], text, status)
-                if status == "done":
-                    _worker_status["done"] += 1
-                    _worker_status["last_error"] = None
-                elif status == "pending":
-                    # Model not ready yet; pause so we don't hot-loop.
-                    _worker_status["last_error"] = "Model warming up…"
-                    await asyncio.sleep(8)
-            except Exception as e:  # keep the worker alive no matter what
-                _worker_status["last_error"] = str(e)
-                db.set_summary(story["id"], "Summary error.", "failed")
-            await asyncio.sleep(0.2)
+# Serializes summary generation: the CPU-bound local model runs one at a time,
+# even though requests arrive concurrently as cards scroll into view.
+_summary_lock = asyncio.Lock()
+_summary_stats = {"done": 0, "last_error": None}
 
 
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init()
-    task = asyncio.create_task(summary_worker())
-    # Pull stories on first boot if the DB is empty.
+    # Pull stories on first boot if the DB is empty. Summaries are generated
+    # on demand as cards scroll into view (see /api/summarize).
     if db.counts()["new"] == 0 and db.counts()["read"] == 0:
         with contextlib.suppress(Exception):
             await refresh_stories(limit=50)
     yield
-    task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await task
 
 
 app = FastAPI(title="HN Doom-Scroll", lifespan=lifespan)
+
+
+async def generate_summary(story_id: int):
+    """Generate one story's summary, serialized against other generations."""
+    async with _summary_lock:
+        story = db.get_story(story_id)
+        if not story:
+            return None
+        # Another request may have finished it while we waited for the lock.
+        if story["summary_status"] in ("done", "skipped"):
+            return story
+        if not await summarizer.ollama_available():
+            db.set_summary(story_id, "Waiting for local model (Ollama)…", "pending")
+            _summary_stats["last_error"] = "Ollama unreachable"
+            return db.get_story(story_id)
+        try:
+            text, status, source = await summarizer.summarize_story(story)
+            db.set_summary(story_id, text, status, source)
+            if status == "done":
+                _summary_stats["done"] += 1
+                _summary_stats["last_error"] = None
+        except Exception as e:
+            _summary_stats["last_error"] = str(e)
+            db.set_summary(story_id, "Summary error.", "failed", "none")
+    return db.get_story(story_id)
 
 
 async def refresh_stories(limit: int = 50):
@@ -86,9 +76,23 @@ async def api_feed(limit: int = 50, offset: int = 0):
 
 @app.get("/api/list/{state}")
 async def api_list(state: str):
-    if state not in ("read", "hidden", "new"):
-        raise HTTPException(400, "state must be new, read, or hidden")
+    if state not in ("read", "hidden", "new", "saved"):
+        raise HTTPException(400, "state must be new, read, hidden, or saved")
     return {"stories": db.get_by_state(state)}
+
+
+@app.post("/api/summarize/{story_id}")
+async def api_summarize(story_id: int):
+    """Generate (or fetch) a single story's summary on demand."""
+    story = await generate_summary(story_id)
+    if not story:
+        raise HTTPException(404, "story not found")
+    return {
+        "id": story["id"],
+        "summary": story["summary"],
+        "summary_status": story["summary_status"],
+        "summary_source": story.get("summary_source", ""),
+    }
 
 
 @app.post("/api/refresh")
@@ -99,9 +103,15 @@ async def api_refresh(limit: int = 50):
 
 @app.post("/api/story/{story_id}/{action}")
 async def api_action(story_id: int, action: str):
-    mapping = {"read": "read", "hide": "hidden", "unhide": "new", "restore": "new"}
+    mapping = {
+        "read": "read",
+        "hide": "hidden",
+        "save": "saved",
+        "unhide": "new",
+        "restore": "new",
+    }
     if action not in mapping:
-        raise HTTPException(400, "action must be read, hide, unhide, or restore")
+        raise HTTPException(400, "action must be read, hide, save, unhide, or restore")
     changed = db.set_state(story_id, mapping[action])
     if not changed:
         raise HTTPException(404, "story not found")
@@ -111,7 +121,7 @@ async def api_action(story_id: int, action: str):
 @app.get("/api/status")
 async def api_status():
     return {
-        "worker": _worker_status,
+        "worker": _summary_stats,
         "counts": db.counts(),
         "ollama": await summarizer.ollama_available(),
         "model": summarizer.MODEL,

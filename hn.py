@@ -38,3 +38,50 @@ async def fetch_top_stories(limit: int = 50):
 
         results = await asyncio.gather(*(one(i) for i in ids))
     return [r for r in results if r]
+
+
+def _strip_html(text: str) -> str:
+    """HN comment/post text is HTML-ish. Crude but dependency-free cleanup."""
+    import html
+    import re
+    if not text:
+        return ""
+    text = text.replace("<p>", "\n\n").replace("</p>", "")
+    text = re.sub(r"<[^>]+>", "", text)        # drop remaining tags
+    return html.unescape(text).strip()
+
+
+async def fetch_discussion_text(item_id: int, max_comments: int = 8) -> str | None:
+    """Return the post's own text plus its top comments, as plain text.
+
+    Used as a fallback when an external article can't be fetched: the HN
+    discussion usually contains enough context to summarize what it's about.
+    """
+    async with httpx.AsyncClient() as client:
+        try:
+            item = await _get_json(client, f"{API}/item/{item_id}.json")
+        except Exception:
+            return None
+        if not item:
+            return None
+
+        parts = []
+        if item.get("text"):
+            parts.append(_strip_html(item["text"]))
+
+        kid_ids = (item.get("kids") or [])[:max_comments]
+
+        async def comment(cid: int):
+            try:
+                c = await _get_json(client, f"{API}/item/{cid}.json")
+            except Exception:
+                return None
+            if not c or c.get("deleted") or c.get("dead") or not c.get("text"):
+                return None
+            return _strip_html(c["text"])
+
+        comments = await asyncio.gather(*(comment(c) for c in kid_ids))
+        parts.extend(c for c in comments if c)
+
+    text = "\n\n".join(p for p in parts if p).strip()
+    return text or None

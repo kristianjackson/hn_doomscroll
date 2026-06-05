@@ -202,6 +202,7 @@ main {
 }
 .btn:hover { color: var(--text); border-color: var(--muted); }
 .btn.read:hover { color: var(--green); border-color: var(--green); }
+.btn.save:hover { color: #e3b341; border-color: #e3b341; }
 .btn.hide:hover { color: var(--red); border-color: var(--red); }
 .btn.primary { color: var(--text); }
 
@@ -406,4 +407,24 @@ main {
 @media (max-width: 560px) {
   .bar { flex-wrap: wrap; }
   .status { max-width: 100%; }
+}
+
+/* --- Summary source badges ------------------------------------------------- */
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-right: 8px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.badge-info {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+.badge-warn {
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
 }
