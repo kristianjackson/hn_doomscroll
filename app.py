@@ -55,10 +55,21 @@ async def generate_summary(story_id: int):
             if status == "done":
                 _summary_stats["done"] += 1
                 _summary_stats["last_error"] = None
+            # Embed the title + summary for semantic search (best-effort).
+            if status in ("done", "skipped"):
+                await _embed_story(story_id, story.get("title", ""), text)
         except Exception as e:
             _summary_stats["last_error"] = str(e)
             db.set_summary(story_id, "Summary error.", "failed", "none")
     return db.get_story(story_id)
+
+
+async def _embed_story(story_id: int, title: str, summary: str):
+    """Compute and store an embedding for a story (no-op if model absent)."""
+    import json
+    vec = await summarizer.embed_text(f"{title}\n\n{summary}")
+    if vec:
+        db.set_embedding(story_id, json.dumps(vec))
 
 
 async def refresh_stories(limit: int = 50):
@@ -85,6 +96,52 @@ async def api_list(state: str):
 async def api_search(q: str = ""):
     """Search all stored stories (any state) by title or summary text."""
     return {"stories": db.search(q), "query": q}
+
+
+@app.get("/api/semantic-search")
+async def api_semantic_search(q: str = ""):
+    """Rank stored stories by semantic similarity to the query.
+
+    Embeds the query with the local embedding model and compares against
+    per-story embeddings (cosine). Backfills a bounded number of missing
+    embeddings on the fly. Falls back to keyword search if the embedding
+    model isn't available.
+    """
+    import json
+    query = (q or "").strip()
+    if not query:
+        return {"stories": [], "query": q, "mode": "semantic"}
+
+    if not await summarizer.embed_model_available():
+        # Graceful fallback so search still works without the embed model.
+        return {"stories": db.search(query), "query": q, "mode": "keyword-fallback"}
+
+    # Backfill embeddings for a bounded batch of summarized-but-unembedded
+    # stories so results aren't limited to only what you've already viewed.
+    async with _summary_lock:
+        for s in db.stories_missing_embedding(limit=40):
+            await _embed_story(s["id"], s.get("title", ""), s.get("summary", ""))
+
+    qvec = await summarizer.embed_text(query)
+    if not qvec:
+        return {"stories": db.search(query), "query": q, "mode": "keyword-fallback"}
+
+    scored = []
+    for sid, emb_json in db.get_embeddings(limit=1000):
+        try:
+            vec = json.loads(emb_json)
+        except Exception:
+            continue
+        sim = summarizer.cosine_similarity(qvec, vec)
+        if sim > 0.4:  # drop weak matches
+            scored.append((sid, sim))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    top_ids = [sid for sid, _ in scored[:60]]
+    stories = db.get_stories_by_ids(top_ids)
+    sim_by_id = dict(scored)
+    for s in stories:
+        s["similarity"] = round(sim_by_id.get(s["id"], 0), 3)
+    return {"stories": stories, "query": q, "mode": "semantic"}
 
 
 @app.post("/api/summarize/{story_id}")

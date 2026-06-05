@@ -33,9 +33,10 @@ Settings — themes, auto-refresh, feed size, and keyword filters:
 
 ## Quick start
 
-1. Make sure Ollama is running and the model is pulled:
+1. Make sure Ollama is running and the models are pulled:
    ```
    ollama pull llama3.2:3b
+   ollama pull nomic-embed-text   # optional — enables semantic search
    ```
 2. Double-click **`run.bat`** (or run it from a terminal).
    - First run sets up the virtualenv, installs dependencies, and downloads the
@@ -80,7 +81,11 @@ generated on demand as you scroll, using your local model.
   feed, read, saved, and hidden — by title or summary text. So when you remember
   reading something but not where, just type a keyword. Each result shows a badge
   for where it currently lives (In feed / Read / Saved / Hidden). Press Escape or
-  the ✕ to return to where you were.
+  the ✕ to return to where you were. Toggle the **kw/ai** button to switch
+  between keyword (exact text) and **semantic** search — semantic finds stories
+  by *meaning*, so "machine learning" surfaces AI stories that never use those
+  exact words. Semantic search uses a local embedding model (`nomic-embed-text`);
+  if it isn't installed, search falls back to keyword automatically.
 - The **↻ Refresh** button pulls the latest front page. Already-seen stories
   keep their state; only genuinely new stories get added. When auto-refresh is
   on, this button doubles as a live countdown to the next refresh (see below).

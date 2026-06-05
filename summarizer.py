@@ -18,7 +18,9 @@ import trafilatura
 import hn
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
 MODEL = "llama3.2:3b"
+EMBED_MODEL = "nomic-embed-text"
 MAX_ARTICLE_CHARS = 8000  # keep the prompt small for a fast local model
 MIN_USEFUL_CHARS = 200    # less than this isn't a real article body
 
@@ -214,3 +216,50 @@ async def ollama_available() -> bool:
             return r.status_code == 200
     except Exception:
         return False
+
+
+# --- embeddings (semantic search) ----------------------------------------------
+import math
+
+
+async def embed_text(text: str) -> list[float] | None:
+    """Return an embedding vector for text via the local embedding model."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(
+                OLLAMA_EMBED_URL,
+                json={"model": EMBED_MODEL, "prompt": text[:MAX_ARTICLE_CHARS]},
+            )
+            r.raise_for_status()
+            data = r.json()
+    except Exception:
+        return None
+    vec = data.get("embedding")
+    return vec if isinstance(vec, list) and vec else None
+
+
+async def embed_model_available() -> bool:
+    """True if the embedding model is pulled and reachable."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get("http://localhost:11434/api/tags")
+            if r.status_code != 200:
+                return False
+            names = [m.get("name", "") for m in r.json().get("models", [])]
+            return any(n.startswith(EMBED_MODEL) for n in names)
+    except Exception:
+        return False
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)

@@ -474,6 +474,22 @@ main {
 }
 .search-clear:hover { color: var(--text); }
 
+.search-mode {
+  margin-left: 6px;
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.search-mode:hover { color: var(--text); border-color: var(--muted); }
+.search-mode.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 .badge-state {
   background: color-mix(in srgb, var(--muted) 16%, transparent);
   color: var(--muted);

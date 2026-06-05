@@ -10,6 +10,8 @@ let offset = 0;
 const PAGE = 20;
 let searchQuery = "";       // active query when view === "search"
 let prevView = "feed";      // view to restore when search is cleared
+let searchMode = localStorage.getItem("searchMode") || "keyword"; // keyword | semantic
+let searchModeNote = "";
 let loading = false;
 let exhausted = false;
 
@@ -121,8 +123,12 @@ async function loadMore() {
     stories = data.stories;
     updateStatus(data.counts);
   } else if (view === "search") {
-    const r = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
-    stories = (await r.json()).stories;
+    const endpoint = searchMode === "semantic" ? "semantic-search" : "search";
+    const r = await fetch(`/api/${endpoint}?q=${encodeURIComponent(searchQuery)}`);
+    const data = await r.json();
+    stories = data.stories;
+    searchModeNote = data.mode === "keyword-fallback"
+      ? " (semantic unavailable — showing keyword matches)" : "";
     exhausted = true; // search returns all matches at once
   } else {
     const r = await fetch(`/api/list/${view}`);
@@ -134,7 +140,7 @@ async function loadMore() {
     if (view === "feed") {
       emptyEl.textContent = "All caught up. Hit Refresh to pull the latest from HN.";
     } else if (view === "search") {
-      emptyEl.textContent = `No stories match "${searchQuery}".`;
+      emptyEl.textContent = `No stories match "${searchQuery}"${searchModeNote}.`;
     } else {
       emptyEl.textContent = `Nothing in ${view} yet.`;
     }
@@ -276,6 +282,24 @@ searchInput.addEventListener("keydown", (e) => {
   if (e.key === "Escape") exitSearch();
 });
 searchClear.addEventListener("click", exitSearch);
+
+// Keyword <-> semantic toggle.
+const searchModeBtn = document.getElementById("search-mode");
+function syncSearchModeBtn() {
+  const semantic = searchMode === "semantic";
+  searchModeBtn.textContent = semantic ? "ai" : "kw";
+  searchModeBtn.classList.toggle("active", semantic);
+  searchModeBtn.title = semantic
+    ? "Semantic search (meaning-based) — click for keyword"
+    : "Keyword search (exact text) — click for semantic";
+}
+searchModeBtn.addEventListener("click", () => {
+  searchMode = searchMode === "semantic" ? "keyword" : "semantic";
+  localStorage.setItem("searchMode", searchMode);
+  syncSearchModeBtn();
+  if (searchQuery) runSearch(searchInput.value);  // re-run with new mode
+});
+syncSearchModeBtn();
 
 
 let isRefreshing = false;

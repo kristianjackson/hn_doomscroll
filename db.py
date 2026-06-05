@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS stories (
     summary         TEXT,
     summary_status  TEXT    DEFAULT 'pending',-- pending | done | failed | skipped
     summary_source  TEXT    DEFAULT '',       -- article | rendered | discussion | pdf | video | paywall | none
+    embedding       TEXT,                     -- JSON float vector for semantic search
     state           TEXT    DEFAULT 'new',    -- new | read | hidden | saved
     fetched_at      INTEGER DEFAULT (strftime('%s','now')),
     updated_at      INTEGER DEFAULT (strftime('%s','now'))
@@ -44,10 +45,13 @@ CREATE TABLE IF NOT EXISTS filters (
 def init():
     with _lock:
         _conn.executescript(SCHEMA)
-        # Lightweight migration: add summary_source to pre-existing databases.
+        # Lightweight migrations: add columns to pre-existing databases.
         cols = [r["name"] for r in _conn.execute("PRAGMA table_info(stories)").fetchall()]
         if "summary_source" not in cols:
             _conn.execute("ALTER TABLE stories ADD COLUMN summary_source TEXT DEFAULT ''")
+        if "embedding" not in cols:
+            # JSON-encoded float vector of the title+summary, for semantic search.
+            _conn.execute("ALTER TABLE stories ADD COLUMN embedding TEXT")
         _conn.commit()
 
 
@@ -174,6 +178,54 @@ def search(query: str, limit: int = 100):
             (like, like, limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# --- semantic search support ---------------------------------------------------
+def set_embedding(story_id: int, vector_json: str):
+    with _lock:
+        _conn.execute(
+            "UPDATE stories SET embedding=? WHERE id=?", (vector_json, story_id)
+        )
+        _conn.commit()
+
+
+def get_embeddings(limit: int = 500):
+    """Return [(id, embedding_json)] for stories that have an embedding."""
+    with _lock:
+        rows = _conn.execute(
+            "SELECT id, embedding FROM stories WHERE embedding IS NOT NULL LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [(r["id"], r["embedding"]) for r in rows]
+
+
+def stories_missing_embedding(limit: int = 40):
+    """Stories with a usable summary but no embedding yet (for backfill)."""
+    with _lock:
+        rows = _conn.execute(
+            """
+            SELECT id, title, summary FROM stories
+            WHERE embedding IS NULL
+              AND summary_status IN ('done', 'skipped')
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_stories_by_ids(ids):
+    if not ids:
+        return []
+    placeholders = ",".join("?" * len(ids))
+    with _lock:
+        rows = _conn.execute(
+            f"SELECT * FROM stories WHERE id IN ({placeholders})", list(ids)
+        ).fetchall()
+    by_id = {r["id"]: dict(r) for r in rows}
+    # Preserve the caller's ordering (e.g. by similarity score).
+    return [by_id[i] for i in ids if i in by_id]
 
 
 def get_story(story_id: int):
