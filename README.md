@@ -76,6 +76,11 @@ generated on demand as you scroll, using your local model.
 - The **★ Saved**, **Read**, and **Hidden** tabs let you review past choices.
   Saved is your read-it-later list; from any of these tabs you can send a story
   back to the feed (or, from Saved, mark it read).
+- **Search** (the box in the header) finds anything you've seen — across the
+  feed, read, saved, and hidden — by title or summary text. So when you remember
+  reading something but not where, just type a keyword. Each result shows a badge
+  for where it currently lives (In feed / Read / Saved / Hidden). Press Escape or
+  the ✕ to return to where you were.
 - The **↻ Refresh** button pulls the latest front page. Already-seen stories
   keep their state; only genuinely new stories get added. When auto-refresh is
   on, this button doubles as a live countdown to the next refresh (see below).

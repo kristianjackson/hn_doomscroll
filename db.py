@@ -152,6 +152,30 @@ def get_by_state(state: str, limit: int = 100):
     return [dict(r) for r in rows]
 
 
+def search(query: str, limit: int = 100):
+    """Full-text-ish search across every story, regardless of state.
+
+    Matches the query against the title and summary (case-insensitive
+    substring). Lets you find something you read/saved/hid earlier. Results are
+    ordered by most-recently-touched so recent reads surface first.
+    """
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    like = f"%{q}%"
+    with _lock:
+        rows = _conn.execute(
+            """
+            SELECT * FROM stories
+            WHERE LOWER(title) LIKE ? OR LOWER(COALESCE(summary,'')) LIKE ?
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (like, like, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_story(story_id: int):
     with _lock:
         row = _conn.execute(

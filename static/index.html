@@ -24,6 +24,11 @@
         <button class="tab" data-view="hidden">Hidden</button>
       </div>
       <div class="actions">
+        <div class="search-wrap">
+          <input type="search" id="search-input" placeholder="Search everything…"
+                 autocomplete="off" aria-label="Search stories" />
+          <button id="search-clear" class="search-clear hidden" aria-label="Clear search">✕</button>
+        </div>
         <span id="status" class="status"></span>
         <button id="refresh" title="Fetch latest from Hacker News">↻ Refresh</button>
         <button id="settings-btn" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>

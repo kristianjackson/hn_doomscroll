@@ -5,9 +5,11 @@ const statusEl = document.getElementById("status");
 const refreshBtn = document.getElementById("refresh");
 const sentinel = document.getElementById("sentinel");
 
-let view = "feed";          // feed | read | hidden
+let view = "feed";          // feed | saved | read | hidden | search
 let offset = 0;
 const PAGE = 20;
+let searchQuery = "";       // active query when view === "search"
+let prevView = "feed";      // view to restore when search is cleared
 let loading = false;
 let exhausted = false;
 
@@ -52,6 +54,17 @@ function escapeHtml(t) {
   return d.innerHTML;
 }
 
+function stateBadge(s) {
+  // Shown in search results so you know where each story currently lives.
+  const map = {
+    new: '<span class="badge badge-state">In feed</span>',
+    read: '<span class="badge badge-state">✓ Read</span>',
+    saved: '<span class="badge badge-state">★ Saved</span>',
+    hidden: '<span class="badge badge-state">✕ Hidden</span>',
+  };
+  return map[s.state] || "";
+}
+
 function cardHtml(s) {
   const link = s.url || s.hn_url;
   let actions;
@@ -62,6 +75,10 @@ function cardHtml(s) {
   } else if (view === "saved") {
     actions = `<button class="btn read" data-act="read">✓ Mark read</button>
        <button class="btn" data-act="restore">↩ Back to feed</button>`;
+  } else if (view === "search") {
+    // Offer actions appropriate to where the story currently lives.
+    actions = `<button class="btn save" data-act="save">★ Save</button>
+       <button class="btn" data-act="restore">↩ To feed</button>`;
   } else {
     actions = `<button class="btn save" data-act="save">★ Save</button>
        <button class="btn" data-act="restore">↩ Back to feed</button>`;
@@ -71,6 +88,7 @@ function cardHtml(s) {
   const skipNote = downranked
     ? `<div class="skip-note">↓ You usually skip stories like this${reasons ? ` (${reasons})` : ""}</div>`
     : "";
+  const stBadge = view === "search" ? stateBadge(s) : "";
   return `
     <article class="card${downranked ? " downranked" : ""}" data-id="${s.id}" data-summary-status="${s.summary_status}">
       ${skipNote}
@@ -79,6 +97,7 @@ function cardHtml(s) {
         <span class="domain">${domain(s.url)}</span>
         <span>${s.num_comments} comments</span>
         <span>${timeAgo(s.posted_at)}</span>
+        ${stBadge}
       </div>
       <h2><a href="${link}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a></h2>
       ${summaryBlock(s)}
@@ -101,6 +120,10 @@ async function loadMore() {
     const data = await r.json();
     stories = data.stories;
     updateStatus(data.counts);
+  } else if (view === "search") {
+    const r = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
+    stories = (await r.json()).stories;
+    exhausted = true; // search returns all matches at once
   } else {
     const r = await fetch(`/api/list/${view}`);
     stories = (await r.json()).stories;
@@ -108,9 +131,13 @@ async function loadMore() {
   }
 
   if (stories.length === 0 && offset === 0) {
-    emptyEl.textContent = view === "feed"
-      ? "All caught up. Hit Refresh to pull the latest from HN."
-      : `Nothing in ${view} yet.`;
+    if (view === "feed") {
+      emptyEl.textContent = "All caught up. Hit Refresh to pull the latest from HN.";
+    } else if (view === "search") {
+      emptyEl.textContent = `No stories match "${searchQuery}".`;
+    } else {
+      emptyEl.textContent = `Nothing in ${view} yet.`;
+    }
     emptyEl.classList.remove("hidden");
   }
   if (stories.length < PAGE) exhausted = true;
@@ -178,6 +205,12 @@ async function act(id, action) {
   if (card) card.classList.add("leaving");
   await fetch(`/api/story/${id}/${action}`, { method: "POST" });
   setTimeout(() => {
+    if (view === "search") {
+      // Keep results in place but refresh so the state badge updates.
+      resetFeed();
+      refreshStatus();
+      return;
+    }
     if (card) card.remove();
     refreshStatus();
     if (feedEl.children.length === 0) resetFeed();
@@ -196,9 +229,54 @@ document.querySelectorAll(".tab").forEach((tab) => {
     document.querySelector(".tab.active").classList.remove("active");
     tab.classList.add("active");
     view = tab.dataset.view;
+    // Switching tabs exits search mode.
+    if (searchInput.value) { searchInput.value = ""; searchClear.classList.add("hidden"); }
+    searchQuery = "";
     resetFeed();
   });
 });
+
+// --- Search ------------------------------------------------------------------
+const searchInput = document.getElementById("search-input");
+const searchClear = document.getElementById("search-clear");
+let searchDebounce = null;
+
+function runSearch(q) {
+  searchQuery = q.trim();
+  if (!searchQuery) { exitSearch(); return; }
+  if (view !== "search") {
+    prevView = view;                       // remember where we were
+    document.querySelector(".tab.active")?.classList.remove("active");
+  }
+  view = "search";
+  searchClear.classList.remove("hidden");
+  resetFeed();
+}
+
+function exitSearch() {
+  searchQuery = "";
+  searchInput.value = "";
+  searchClear.classList.add("hidden");
+  view = prevView || "feed";
+  const tab = document.querySelector(`.tab[data-view="${view}"]`);
+  if (tab) {
+    document.querySelector(".tab.active")?.classList.remove("active");
+    tab.classList.add("active");
+  }
+  resetFeed();
+}
+
+searchInput.addEventListener("input", () => {
+  clearTimeout(searchDebounce);
+  const q = searchInput.value;
+  searchClear.classList.toggle("hidden", !q);
+  searchDebounce = setTimeout(() => runSearch(q), 250);
+});
+searchInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") exitSearch();
+});
+searchClear.addEventListener("click", exitSearch);
+
 
 let isRefreshing = false;
 

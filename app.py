@@ -81,6 +81,12 @@ async def api_list(state: str):
     return {"stories": db.get_by_state(state)}
 
 
+@app.get("/api/search")
+async def api_search(q: str = ""):
+    """Search all stored stories (any state) by title or summary text."""
+    return {"stories": db.search(q), "query": q}
+
+
 @app.post("/api/summarize/{story_id}")
 async def api_summarize(story_id: int):
     """Generate (or fetch) a single story's summary on demand."""
