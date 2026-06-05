@@ -5,6 +5,15 @@ All notable changes to HN Doom-Scroll are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Model selection in Settings.** A new Models section lists the Ollama models
+  installed on your machine (polled live) and lets you pick the summary model
+  and the semantic-search embedding model from dropdowns. The choice is saved
+  server-side in SQLite and persists across restarts; only installed models are
+  selectable.
+
 ## [0.1.0] - 2026-06-05
 
 First working version: a local Hacker News reader with AI summaries, built and

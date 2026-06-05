@@ -19,8 +19,13 @@ import hn
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
+OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
+# Active models — mutable so they can be changed at runtime via Settings.
+# Defaults here; app.py loads any saved choice from the DB on startup.
 MODEL = "llama3.2:3b"
 EMBED_MODEL = "nomic-embed-text"
+DEFAULT_MODEL = "llama3.2:3b"
+DEFAULT_EMBED_MODEL = "nomic-embed-text"
 MAX_ARTICLE_CHARS = 8000  # keep the prompt small for a fast local model
 MIN_USEFUL_CHARS = 200    # less than this isn't a real article body
 
@@ -216,6 +221,26 @@ async def ollama_available() -> bool:
             return r.status_code == 200
     except Exception:
         return False
+
+
+async def list_installed_models() -> list[str]:
+    """Return the names of models currently installed in Ollama."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(OLLAMA_TAGS_URL)
+            r.raise_for_status()
+            return [m.get("name", "") for m in r.json().get("models", []) if m.get("name")]
+    except Exception:
+        return []
+
+
+def set_models(model: str | None = None, embed_model: str | None = None):
+    """Update the active summary / embedding models at runtime."""
+    global MODEL, EMBED_MODEL
+    if model:
+        MODEL = model
+    if embed_model:
+        EMBED_MODEL = embed_model
 
 
 # --- embeddings (semantic search) ----------------------------------------------

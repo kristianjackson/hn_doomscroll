@@ -17,7 +17,7 @@ The feed, in light and dark themes:
 |-------|------|
 | ![Feed, light theme](docs/feed-light.png) | ![Feed, dark theme](docs/feed-dark.png) |
 
-Settings — themes, auto-refresh, feed size, and keyword filters:
+Settings — themes, auto-refresh, feed size, model selection, and keyword filters:
 
 ![Settings panel](docs/settings.png)
 
@@ -138,8 +138,13 @@ toggling is instant.
 
 ## Changing the model
 
-Edit `MODEL` at the top of `summarizer.py` for summaries. Good options for a
-CPU-only machine:
+The easiest way is in-app: open **⚙ Settings → Models** and pick from the
+models installed in your Ollama — one dropdown for summaries, one for semantic
+search. The list is populated by polling Ollama, and your choice is saved
+server-side (in SQLite) so it persists across restarts. Only installed models
+are selectable; pull more with `ollama pull <name>` and they'll appear.
+
+Good summary models for a CPU-only machine:
 
 | Model | Notes |
 |-------|-------|
@@ -147,9 +152,10 @@ CPU-only machine:
 | `qwen2.5:7b-instruct` | Higher quality, noticeably slower on CPU. |
 | `llama3.2:1b` | Fastest, lower quality. Good if 3b feels sluggish. |
 
-For semantic search, `EMBED_MODEL` (also in `summarizer.py`) controls the
-embedding model — default `nomic-embed-text`. After changing either, run
-`ollama pull <model>` once.
+For semantic search the default embedding model is `nomic-embed-text`.
+
+The starting defaults live in `summarizer.py` (`DEFAULT_MODEL`,
+`DEFAULT_EMBED_MODEL`) if you want to change what a fresh install uses.
 
 ## Files
 

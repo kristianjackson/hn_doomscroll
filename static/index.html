@@ -111,6 +111,20 @@
       </section>
 
       <section class="setting-group">
+        <h3>Models</h3>
+        <p class="setting-hint">Choose which local Ollama models to use. Lists models installed on this machine.</p>
+        <div class="interval-row">
+          <label for="model-select">Summaries</label>
+          <select id="model-select"></select>
+        </div>
+        <div class="interval-row">
+          <label for="embed-model-select">Semantic search</label>
+          <select id="embed-model-select"></select>
+        </div>
+        <p class="setting-hint" id="models-note"></p>
+      </section>
+
+      <section class="setting-group">
         <h3>Keyword filters</h3>
         <p class="setting-hint">Hide any story whose title or summary contains these words. Applies to the whole feed.</p>
         <form class="filter-add" id="filter-add">

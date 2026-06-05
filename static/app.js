@@ -528,3 +528,79 @@ resetFeed();
 refreshStatus();
 loadFilters();
 setInterval(refreshStatus, 8000);
+
+
+// --- Model selection ---------------------------------------------------------
+const modelSelect = document.getElementById("model-select");
+const embedModelSelect = document.getElementById("embed-model-select");
+const modelsNote = document.getElementById("models-note");
+
+function fillModelSelect(sel, installed, current, fallback) {
+  sel.innerHTML = "";
+  // If the current model isn't installed, still show it (flagged) so the
+  // dropdown reflects reality rather than silently switching.
+  const options = [...installed];
+  if (current && !options.includes(current)) options.unshift(current);
+  for (const name of options) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name === fallback ? `${name} (default)` : name;
+    if (name === current) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  if (options.length === 0) {
+    const opt = document.createElement("option");
+    opt.textContent = "(no models installed)";
+    sel.appendChild(opt);
+    sel.disabled = true;
+  } else {
+    sel.disabled = false;
+  }
+}
+
+async function loadModels() {
+  try {
+    const r = await fetch("/api/models");
+    const m = await r.json();
+    if (!m.ollama) {
+      modelsNote.textContent = "Ollama isn't reachable — start it to change models.";
+      modelSelect.disabled = embedModelSelect.disabled = true;
+      return;
+    }
+    fillModelSelect(modelSelect, m.installed, m.model, m.default_model);
+    fillModelSelect(embedModelSelect, m.installed, m.embed_model, m.default_embed_model);
+    modelsNote.textContent =
+      `${m.installed.length} model${m.installed.length === 1 ? "" : "s"} installed. ` +
+      "Pull more with: ollama pull <name>";
+  } catch {
+    modelsNote.textContent = "Couldn't load models.";
+  }
+}
+
+async function saveModel(key, value) {
+  const body = key === "model" ? { model: value } : { embed_model: value };
+  try {
+    const r = await fetch("/api/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) {
+      modelsNote.textContent = "Saved. New summaries/searches use the selected model.";
+      refreshStatus();
+    } else {
+      const err = await r.json();
+      modelsNote.textContent = err.detail || "Couldn't set model.";
+      loadModels(); // re-sync dropdowns to actual state
+    }
+  } catch {
+    modelsNote.textContent = "Couldn't reach the server.";
+  }
+}
+
+modelSelect.addEventListener("change", () => saveModel("model", modelSelect.value));
+embedModelSelect.addEventListener("change", () => saveModel("embed_model", embedModelSelect.value));
+
+// Refresh the model list whenever Settings opens (models may have changed).
+settingsBtn.addEventListener("click", loadModels);
+loadModels();

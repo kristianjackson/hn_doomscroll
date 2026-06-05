@@ -25,6 +25,11 @@ _summary_stats = {"done": 0, "last_error": None}
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init()
+    # Restore any saved model choices (server-side setting).
+    summarizer.set_models(
+        model=db.get_setting("model"),
+        embed_model=db.get_setting("embed_model"),
+    )
     # Pull stories on first boot if the DB is empty. Summaries are generated
     # on demand as cards scroll into view (see /api/summarize).
     if db.counts()["new"] == 0 and db.counts()["read"] == 0:
@@ -209,6 +214,45 @@ async def api_filters_add(payload: dict):
 async def api_filters_remove(keyword: str):
     db.remove_filter(keyword)
     return {"filters": db.list_filters(), "counts": db.counts()}
+
+
+# --- model selection -----------------------------------------------------------
+@app.get("/api/models")
+async def api_models():
+    """List installed Ollama models and which ones are currently active."""
+    installed = await summarizer.list_installed_models()
+    return {
+        "installed": installed,
+        "model": summarizer.MODEL,
+        "embed_model": summarizer.EMBED_MODEL,
+        "default_model": summarizer.DEFAULT_MODEL,
+        "default_embed_model": summarizer.DEFAULT_EMBED_MODEL,
+        "ollama": await summarizer.ollama_available(),
+    }
+
+
+@app.post("/api/models")
+async def api_set_models(payload: dict):
+    """Set the active summary and/or embedding model. Persists in SQLite."""
+    payload = payload or {}
+    model = (payload.get("model") or "").strip() or None
+    embed_model = (payload.get("embed_model") or "").strip() or None
+    if not model and not embed_model:
+        raise HTTPException(400, "provide model and/or embed_model")
+
+    # Only accept models that are actually installed.
+    installed = set(await summarizer.list_installed_models())
+    if model and model not in installed:
+        raise HTTPException(400, f"model '{model}' is not installed in Ollama")
+    if embed_model and embed_model not in installed:
+        raise HTTPException(400, f"model '{embed_model}' is not installed in Ollama")
+
+    summarizer.set_models(model=model, embed_model=embed_model)
+    if model:
+        db.set_setting("model", model)
+    if embed_model:
+        db.set_setting("embed_model", embed_model)
+    return {"ok": True, "model": summarizer.MODEL, "embed_model": summarizer.EMBED_MODEL}
 
 
 # --- static frontend -----------------------------------------------------------

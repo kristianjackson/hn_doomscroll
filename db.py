@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS filters (
     keyword    TEXT PRIMARY KEY,            -- lowercase match term
     created_at INTEGER DEFAULT (strftime('%s','now'))
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
@@ -414,3 +419,22 @@ def remove_filter(keyword: str):
         cur = _conn.execute("DELETE FROM filters WHERE keyword=?", (kw,))
         _conn.commit()
     return cur.rowcount > 0
+
+
+# --- key/value settings (server-side) ------------------------------------------
+def get_setting(key: str, default=None):
+    with _lock:
+        row = _conn.execute(
+            "SELECT value FROM settings WHERE key=?", (key,)
+        ).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(key: str, value: str):
+    with _lock:
+        _conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+        _conn.commit()
