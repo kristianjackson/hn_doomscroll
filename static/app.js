@@ -66,8 +66,14 @@ function cardHtml(s) {
     actions = `<button class="btn save" data-act="save">★ Save</button>
        <button class="btn" data-act="restore">↩ Back to feed</button>`;
   }
+  const downranked = view === "feed" && s.downranked;
+  const reasons = (s.downrank_reasons || []).map(escapeHtml).join(", ");
+  const skipNote = downranked
+    ? `<div class="skip-note">↓ You usually skip stories like this${reasons ? ` (${reasons})` : ""}</div>`
+    : "";
   return `
-    <article class="card" data-id="${s.id}" data-summary-status="${s.summary_status}">
+    <article class="card${downranked ? " downranked" : ""}" data-id="${s.id}" data-summary-status="${s.summary_status}">
+      ${skipNote}
       <div class="meta">
         <span class="score">▲ ${s.score}</span>
         <span class="domain">${domain(s.url)}</span>

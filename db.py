@@ -1,7 +1,10 @@
 """SQLite storage for the HN doom-scroll dashboard."""
+import re
 import sqlite3
 import threading
+from collections import Counter
 from pathlib import Path
+from urllib.parse import urlparse
 
 DB_PATH = Path(__file__).parent / "hn.db"
 
@@ -109,7 +112,12 @@ def set_state(story_id: int, state: str):
 
 
 def get_feed(limit: int = 50, offset: int = 0):
-    """Active feed: stories the user hasn't read or hidden, minus keyword-filtered."""
+    """Active feed, with disliked stories down-ranked (not removed).
+
+    Stories matching your "not interested" signals sink to the bottom and are
+    tagged with `downranked` + `downrank_reasons`. Keyword-filtered stories are
+    excluded entirely (that's the explicit filter, this is the soft signal).
+    """
     where, params = _filter_clause()
     with _lock:
         rows = _conn.execute(
@@ -117,11 +125,22 @@ def get_feed(limit: int = 50, offset: int = 0):
             SELECT * FROM stories
             WHERE state = 'new'{where}
             ORDER BY rank ASC
-            LIMIT ? OFFSET ?
             """,
-            (*params, limit, offset),
+            params,
         ).fetchall()
-    return [dict(r) for r in rows]
+    stories = [dict(r) for r in rows]
+
+    profile = build_dislike_profile()
+    for s in stories:
+        score, reasons = score_against_dislikes(s, profile)
+        s["downranked"] = score > 0
+        s["downrank_reasons"] = reasons
+
+    # Stable sort: disliked stories move to the bottom, HN order kept within
+    # each group (Python's sort is stable, rows already came back rank-ordered).
+    stories.sort(key=lambda s: 1 if s["downranked"] else 0)
+
+    return stories[offset:offset + limit]
 
 
 def get_by_state(state: str, limit: int = 100):
@@ -139,6 +158,98 @@ def get_story(story_id: int):
             "SELECT * FROM stories WHERE id=?", (story_id,)
         ).fetchone()
     return dict(row) if row else None
+
+
+# --- "not interested" learning -------------------------------------------------
+# We learn from hidden stories: which words and domains you keep skipping.
+# New stories matching those signals get down-ranked (pushed down, dimmed, and
+# labeled) rather than removed — you still see everything.
+
+MIN_HIDDEN_TO_LEARN = 10   # cold-start guard: do nothing until enough signal
+TOP_TERMS = 15             # how many disliked terms to track
+
+_STOPWORDS = {
+    "the", "a", "an", "and", "or", "but", "for", "to", "of", "in", "on", "at",
+    "is", "are", "was", "were", "be", "by", "with", "from", "as", "it", "its",
+    "this", "that", "these", "those", "how", "why", "what", "when", "your",
+    "you", "we", "i", "my", "our", "they", "their", "he", "she", "his", "her",
+    "show", "ask", "hn", "new", "using", "use", "via", "vs", "into", "out",
+    "up", "down", "about", "after", "before", "over", "more", "most", "can",
+    "will", "not", "no", "yes", "do", "does", "has", "have", "had", "get",
+}
+
+
+def _tokens(text: str):
+    """Lowercase word tokens of length >= 4, minus stopwords."""
+    if not text:
+        return []
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9+\-]{3,}", text.lower())
+    return [w for w in words if w not in _STOPWORDS]
+
+
+def _domain(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        return (urlparse(url).hostname or "").replace("www.", "")
+    except Exception:
+        return ""
+
+
+def build_dislike_profile():
+    """Summarize what the user tends to hide: frequent terms and domains.
+
+    Returns {"terms": {term: count}, "domains": {domain: count}, "n": hidden_count}
+    or None when there isn't enough signal yet (cold start).
+    """
+    with _lock:
+        rows = _conn.execute(
+            "SELECT title, summary, url FROM stories WHERE state='hidden'"
+        ).fetchall()
+    if len(rows) < MIN_HIDDEN_TO_LEARN:
+        return None
+
+    term_counts = Counter()
+    domain_counts = Counter()
+    for r in rows:
+        # Title terms carry the most signal; summary adds a little.
+        term_counts.update(set(_tokens(r["title"])))
+        d = _domain(r["url"])
+        if d:
+            domain_counts[d] += 1
+
+    # Keep terms you've hidden at least twice (a single hide isn't a pattern).
+    terms = {t: c for t, c in term_counts.most_common(TOP_TERMS) if c >= 2}
+    domains = {d: c for d, c in domain_counts.items() if c >= 2}
+    return {"terms": terms, "domains": domains, "n": len(rows)}
+
+
+def score_against_dislikes(story: dict, profile: dict):
+    """Return (score, reasons) for how much a story matches disliked signals.
+
+    score is a small integer; higher = more likely to be skipped. reasons is a
+    short list of human-readable matched signals for display.
+    """
+    if not profile:
+        return 0, []
+    reasons = []
+    score = 0
+
+    title_terms = set(_tokens(story.get("title", "")))
+    summary_terms = set(_tokens(story.get("summary", "")))
+    matched_terms = [t for t in profile["terms"] if t in title_terms or t in summary_terms]
+    # Rank matched terms by how strongly you've disliked them.
+    matched_terms.sort(key=lambda t: profile["terms"][t], reverse=True)
+    if matched_terms:
+        score += len(matched_terms)
+        reasons.extend(matched_terms[:3])
+
+    d = _domain(story.get("url", ""))
+    if d and d in profile["domains"]:
+        score += 1
+        reasons.append(d)
+
+    return score, reasons
 
 
 def counts():

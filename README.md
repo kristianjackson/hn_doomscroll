@@ -52,6 +52,12 @@ generated on demand as you scroll, using your local model.
 - **✓ Read**, **★ Save**, and **✕ Not interested** each move a story out of the
   feed and remember the choice. Read/saved/hidden stories never reappear in the
   feed.
+- **It learns from what you skip.** Once you've hidden 10+ stories, the app
+  notices recurring words and domains in them and gently **down-ranks** similar
+  new stories — they sink to the bottom of the feed, dimmed, with a note like
+  "↓ You usually skip stories like this (crypto, coindesk.com)". Nothing is
+  hidden outright, so you stay in control; hover to un-dim. It only acts on
+  patterns it's seen at least twice, so a one-off skip won't bury anything.
 - The **★ Saved**, **Read**, and **Hidden** tabs let you review past choices.
   Saved is your read-it-later list; from any of these tabs you can send a story
   back to the feed (or, from Saved, mark it read).
