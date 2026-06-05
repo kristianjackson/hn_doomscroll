@@ -165,6 +165,7 @@ embedding model — default `nomic-embed-text`. After changing either, run
 | `run.bat` | One-click launcher (sets up venv, deps, Playwright) |
 | `push-to-github.bat` | Publishes just this folder to its standalone GitHub repo |
 | `LICENSE` | MIT license |
+| `CHANGELOG.md` | Version history |
 
 ## Notes
 
