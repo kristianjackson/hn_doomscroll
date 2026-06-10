@@ -113,7 +113,7 @@ h1 { font-size: 18px; font-weight: 700; white-space: nowrap; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 260px;
+  max-width: 380px;
 }
 
 #refresh, #settings-btn { flex-shrink: 0; }

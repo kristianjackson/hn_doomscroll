@@ -5,6 +5,25 @@ All notable changes to HN Doom-Scroll are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-06-10
+
+### Fixed
+- **Bedrock provider support:** added `boto3` to requirements.txt so Bedrock
+  summarization works out of the box. Previously, a fresh venv would silently
+  fall back to "provider unreachable" because `boto3` wasn't installed.
+- **Crash recovery for stuck summaries:** on startup, any stories left in
+  `pending` status from a previous crash/kill are now reset so they re-queue
+  automatically when scrolled into view.
+- **Stuck pending cards retry:** visible cards that remain in `pending` state
+  now auto-retry every 2 seconds instead of staying frozen until a page reload.
+
+### Changed
+- **Summary queue count moved to header bar:** the status line now shows
+  "⏳ N summarizing" alongside story counts, replacing the per-card queue
+  position text. Cards just show a clean "⏳ Summarizing…" spinner.
+- **Status bar widened** from 260px to 380px max-width to prevent the
+  summarizing count from being truncated.
+
 ## [0.1.1] - 2026-06-05
 
 ### Added
@@ -65,5 +84,6 @@ iterated on in a single session.
 - Playwright and the `nomic-embed-text` model are both optional; the app
   degrades gracefully without them.
 
+[1.0.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.1
 [0.1.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v0.1.1
 [0.1.0]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v0.1.0

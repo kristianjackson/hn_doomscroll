@@ -72,6 +72,22 @@ def set_summary(story_id: int, summary: str, status: str, source: str = ""):
         _conn.commit()
 
 
+def reset_pending_summaries() -> int:
+    """Reset stories stuck in 'pending' status (e.g. after a crash).
+
+    Clears summary text and resets status so they get re-queued on next view.
+    Returns the number of stories reset.
+    """
+    with _lock:
+        cur = _conn.execute(
+            """UPDATE stories
+               SET summary=NULL, summary_status='pending', summary_source=''
+               WHERE summary_status='pending' AND summary IS NOT NULL"""
+        )
+        _conn.commit()
+        return cur.rowcount
+
+
 def upsert_story(item: dict, rank: int):
     """Insert a freshly fetched HN story, or refresh its volatile fields.
 

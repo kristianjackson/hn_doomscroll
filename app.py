@@ -32,6 +32,10 @@ _reembed_state = {"running": False, "done": 0, "total": 0}
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init()
+    # Clear summaries stuck in 'pending' from a previous crash/kill.
+    reset_count = db.reset_pending_summaries()
+    if reset_count:
+        print(f"[startup] Reset {reset_count} stuck pending summaries.")
     # Restore any saved model choices (server-side setting).
     summarizer.set_models(
         model=db.get_setting("model"),

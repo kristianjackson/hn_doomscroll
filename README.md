@@ -5,9 +5,10 @@ with AI-generated summaries of the actual articles. Mark stories as **read**,
 **save** them for later, or flag them **not interested** — and they leave the
 feed. Search everything you've seen by keyword or meaning.
 
-Everything runs on your machine. SQLite for storage, your local Ollama models
-for summaries and semantic search. No external services beyond fetching HN
-itself and the article pages.
+Everything runs on your machine. SQLite for storage, AWS Bedrock (default) or
+your local Ollama models for summaries, and Ollama for semantic search. No
+external services beyond fetching HN itself, the article pages, and the
+configured AI provider.
 
 ## Screenshots
 
@@ -33,7 +34,9 @@ Semantic search ranks results by meaning, with a match score on each:
 - **Backend:** Python + FastAPI
 - **Storage:** SQLite (`hn.db`, created automatically; also caches summaries and
   semantic-search embeddings)
-- **Summaries:** local LLM via [Ollama](https://ollama.com) — model `llama3.2:3b`
+- **Summaries:** [AWS Bedrock](https://aws.amazon.com/bedrock/) (default,
+  `google.gemma-3-4b-it`) or local LLM via [Ollama](https://ollama.com)
+  (`llama3.2:3b`) — controlled by the `HN_PROVIDER` env var
 - **Semantic search:** local embedding model via Ollama — `nomic-embed-text`
   (optional; keyword search works without it)
 - **Article extraction:** `trafilatura`, with a `playwright` headless-Chromium
@@ -66,8 +69,9 @@ generated on demand as you scroll, using your local model.
   the app asks the local model to summarize that article — so you see summaries
   for what you're actually reading within seconds, and stories you never scroll
   to (or hide) cost no compute. Generation is serialized so the CPU-bound model
-  handles one at a time. Cards show "summarizing locally…" until their summary
-  lands, then update in place.
+  handles one at a time. Cards show "⏳ Summarizing…" until their summary
+  lands, then update in place. The header bar shows a running count of how many
+  summaries are still pending.
 - **Article extraction is layered.** For each story the app tries, in order:
   (1) a direct fetch with realistic browser headers, (2) a headless-Chromium
   render via Playwright for JS-heavy pages, and (3) a fallback that summarizes

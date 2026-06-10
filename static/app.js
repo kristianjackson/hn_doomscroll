@@ -51,24 +51,8 @@ function summaryBlock(s) {
     return `<p class="summary">${badge}${escapeHtml(s.summary)}</p>`;
   if (s.summary_status === "failed")
     return `<p class="summary failed">${badge}${escapeHtml(s.summary || "No summary.")}</p>`;
-  // Pending/working: show provider-aware text + queue/in-flight info
-  let queueInfo = "";
-  if (currentProvider === "bedrock") {
-    // Bedrock runs in parallel — show how many are in-flight total
-    if (summaryQueue.length > 1) {
-      queueInfo = `<span class="queue-pos">${summaryQueue.length} in progress</span>`;
-    }
-  } else {
-    // Ollama is serial — show position in queue
-    const pos = summaryQueue.indexOf(Number(s.id));
-    queueInfo = pos >= 0
-      ? `<span class="queue-pos">#${pos + 1} of ${summaryQueue.length}</span>`
-      : summaryQueue.length > 0
-        ? `<span class="queue-pos">${summaryQueue.length} in queue</span>`
-        : "";
-  }
-  const providerLabel = currentProvider === "bedrock" ? "via Bedrock" : "via Ollama";
-  return `<p class="summary pending">⏳ Summarizing ${providerLabel}… ${queueInfo}</p>`;
+  // Pending: simple spinner, queue count lives in the header bar now
+  return `<p class="summary pending">⏳ Summarizing…</p>`;
 }
 
 function escapeHtml(t) {
@@ -231,7 +215,17 @@ async function pollQueue() {
     const data = await r.json();
     summaryQueue = data.queue || [];
     refreshPendingCards();
+    // Retry stuck pending cards that aren't currently in-flight
+    retryStuckCards();
   } catch {}
+}
+
+function retryStuckCards() {
+  feedEl.querySelectorAll('.card[data-summary-status="pending"]')
+    .forEach((card) => {
+      const id = card.dataset.id;
+      if (!inFlight.has(id)) requestSummary(card);
+    });
 }
 
 function refreshPendingCards() {
@@ -380,10 +374,11 @@ function updateStatus(counts) {
   if (!counts) return;
   let saved = counts.saved ? ` · ${counts.saved} saved` : "";
   let filt = counts.filtered ? ` · ${counts.filtered} filtered` : "";
+  let pending = counts.pending_summaries ? ` · ⏳ ${counts.pending_summaries} summarizing` : "";
   statusEl.dataset.counts = JSON.stringify(counts);
   statusEl.innerHTML =
     `<span class="dot ${statusEl.dataset.available === "off" ? "off" : "ok"}"></span>` +
-    `${counts.new} new · ${counts.read} read${saved}${filt}`;
+    `${counts.new} new · ${counts.read} read${saved}${filt}${pending}`;
 }
 
 async function refreshStatus() {
