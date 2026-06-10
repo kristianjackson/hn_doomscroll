@@ -330,7 +330,7 @@ function updateStatus(counts) {
   let filt = counts.filtered ? ` · ${counts.filtered} filtered` : "";
   statusEl.dataset.counts = JSON.stringify(counts);
   statusEl.innerHTML =
-    `<span class="dot ${statusEl.dataset.ollama === "off" ? "off" : "ok"}"></span>` +
+    `<span class="dot ${statusEl.dataset.available === "off" ? "off" : "ok"}"></span>` +
     `${counts.new} new · ${counts.read} read${saved}${filt}`;
 }
 
@@ -338,7 +338,7 @@ async function refreshStatus() {
   try {
     const r = await fetch("/api/status");
     const s = await r.json();
-    statusEl.dataset.ollama = s.ollama ? "ok" : "off";
+    statusEl.dataset.available = s.available ? "ok" : "off";
     updateStatus(s.counts);
   } catch {}
 }
@@ -562,7 +562,14 @@ async function loadModels() {
   try {
     const r = await fetch("/api/models");
     const m = await r.json();
-    if (!m.ollama) {
+    if (m.provider === "bedrock") {
+      // Bedrock mode: hide model picker, show info only
+      modelsNote.textContent = `Using AWS Bedrock (${m.model}).`;
+      modelSelect.parentElement.style.display = "none";
+      embedModelSelect.parentElement.style.display = "none";
+      return;
+    }
+    if (!m.available) {
       modelsNote.textContent = "Ollama isn't reachable — start it to change models.";
       modelSelect.disabled = embedModelSelect.disabled = true;
       return;

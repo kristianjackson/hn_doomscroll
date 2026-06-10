@@ -1,4 +1,4 @@
-"""Article extraction + local summarization via Ollama.
+"""Article extraction + summarization via AWS Bedrock (or local Ollama fallback).
 
 Extraction strategy (in order, stopping at the first success):
   1. Direct HTTP fetch with realistic browser headers.
@@ -8,8 +8,13 @@ Extraction strategy (in order, stopping at the first success):
 
 Each story is labeled with where its summary came from, and known
 paywall/PDF/video cases are reported clearly instead of as generic failures.
+
+Provider selection (env var):
+  HN_PROVIDER=bedrock (default) | ollama
 """
 import asyncio
+import json as _json
+import os
 from urllib.parse import urlparse
 
 import httpx
@@ -17,16 +22,26 @@ import trafilatura
 
 import hn
 
+# --- Provider config ---
+PROVIDER = os.environ.get("HN_PROVIDER", "bedrock")  # "bedrock" or "ollama"
+
+# Ollama settings (fallback)
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
 OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
+
+# Bedrock settings
+BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
+BEDROCK_REASON_MODEL = os.environ.get("BEDROCK_REASON_MODEL", "google.gemma-3-4b-it")
+BEDROCK_EMBED_MODEL = "amazon.titan-embed-text-v2:0"
+
 # Active models — mutable so they can be changed at runtime via Settings.
-# Defaults here; app.py loads any saved choice from the DB on startup.
+# These only apply in Ollama mode.
 MODEL = "llama3.2:3b"
 EMBED_MODEL = "nomic-embed-text"
 DEFAULT_MODEL = "llama3.2:3b"
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
-MAX_ARTICLE_CHARS = 8000  # keep the prompt small for a fast local model
+MAX_ARTICLE_CHARS = 8000  # keep the prompt small for a fast model
 MIN_USEFUL_CHARS = 200    # less than this isn't a real article body
 
 BROWSER_HEADERS = {
@@ -126,6 +141,14 @@ async def _fetch_rendered(url: str) -> str | None:
 
 
 async def summarize_text(prompt: str) -> str | None:
+    """Generate a summary using the configured provider."""
+    if PROVIDER == "bedrock":
+        return await _summarize_bedrock(prompt)
+    return await _summarize_ollama(prompt)
+
+
+async def _summarize_ollama(prompt: str) -> str | None:
+    """Summarize via local Ollama."""
     payload = {
         "model": MODEL,
         "prompt": prompt,
@@ -141,6 +164,63 @@ async def summarize_text(prompt: str) -> str | None:
         return None
     out = (data.get("response") or "").strip()
     return out or None
+
+
+async def _summarize_bedrock(prompt: str) -> str | None:
+    """Summarize via AWS Bedrock (runs sync boto3 call in executor)."""
+    try:
+        import boto3
+        loop = asyncio.get_event_loop()
+
+        def _call():
+            client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+            if "anthropic" in BEDROCK_REASON_MODEL:
+                body = _json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 220,
+                    "temperature": 0.3,
+                    "messages": [{"role": "user", "content": prompt}],
+                })
+            elif "meta.llama" in BEDROCK_REASON_MODEL:
+                body = _json.dumps({
+                    "prompt": prompt,
+                    "max_gen_len": 220,
+                    "temperature": 0.3,
+                })
+            elif "google.gemma" in BEDROCK_REASON_MODEL:
+                body = _json.dumps({
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 220,
+                    "temperature": 0.3,
+                })
+            else:
+                body = _json.dumps({
+                    "inputText": prompt,
+                    "textGenerationConfig": {"maxTokenCount": 220, "temperature": 0.3},
+                })
+            resp = client.invoke_model(
+                modelId=BEDROCK_REASON_MODEL,
+                contentType="application/json",
+                accept="application/json",
+                body=body,
+            )
+            data = _json.loads(resp["body"].read())
+            if "anthropic" in BEDROCK_REASON_MODEL:
+                content = data.get("content", [])
+                return content[0]["text"].strip() if content else ""
+            elif "meta.llama" in BEDROCK_REASON_MODEL:
+                return data.get("generation", "").strip()
+            elif "google.gemma" in BEDROCK_REASON_MODEL:
+                choices = data.get("choices", [])
+                return choices[0].get("message", {}).get("content", "").strip() if choices else ""
+            else:
+                results = data.get("results", [{}])
+                return results[0].get("outputText", "").strip() if results else ""
+
+        result = await loop.run_in_executor(None, _call)
+        return result or None
+    except Exception:
+        return None
 
 
 async def _summarize_from_discussion(story: dict) -> tuple[str, str, str] | None:
@@ -214,7 +294,14 @@ async def summarize_story(story: dict) -> tuple[str, str, str]:
             "failed", "none")
 
 
-async def ollama_available() -> bool:
+async def provider_available() -> bool:
+    """Check if the configured provider is reachable."""
+    if PROVIDER == "bedrock":
+        return await _bedrock_available()
+    return await _ollama_available()
+
+
+async def _ollama_available() -> bool:
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             r = await client.get("http://localhost:11434/api/tags")
@@ -223,8 +310,31 @@ async def ollama_available() -> bool:
         return False
 
 
+async def _bedrock_available() -> bool:
+    """Check Bedrock connectivity (runs STS call in executor)."""
+    try:
+        import boto3
+        loop = asyncio.get_event_loop()
+
+        def _check():
+            sts = boto3.client("sts", region_name=BEDROCK_REGION)
+            sts.get_caller_identity()
+            return True
+
+        return await loop.run_in_executor(None, _check)
+    except Exception:
+        return False
+
+
+# Keep old name as alias for backward compat with app.py
+ollama_available = provider_available
+
+
 async def list_installed_models() -> list[str]:
-    """Return the names of models currently installed in Ollama."""
+    """Return available models. In Bedrock mode, returns the configured model names.
+    In Ollama mode, queries the local Ollama instance."""
+    if PROVIDER == "bedrock":
+        return [BEDROCK_REASON_MODEL, BEDROCK_EMBED_MODEL]
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             r = await client.get(OLLAMA_TAGS_URL)
@@ -248,10 +358,17 @@ import math
 
 
 async def embed_text(text: str) -> list[float] | None:
-    """Return an embedding vector for text via the local embedding model."""
+    """Return an embedding vector for text using the configured provider."""
     text = (text or "").strip()
     if not text:
         return None
+    if PROVIDER == "bedrock":
+        return await _embed_bedrock(text)
+    return await _embed_ollama(text)
+
+
+async def _embed_ollama(text: str) -> list[float] | None:
+    """Get embedding from local Ollama."""
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(
@@ -266,8 +383,35 @@ async def embed_text(text: str) -> list[float] | None:
     return vec if isinstance(vec, list) and vec else None
 
 
+async def _embed_bedrock(text: str) -> list[float] | None:
+    """Get embedding from Titan Embed v2 via Bedrock (runs in executor)."""
+    try:
+        import boto3
+        loop = asyncio.get_event_loop()
+
+        def _call():
+            client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+            body = _json.dumps({"inputText": text[:8192]})
+            resp = client.invoke_model(
+                modelId=BEDROCK_EMBED_MODEL,
+                contentType="application/json",
+                accept="application/json",
+                body=body,
+            )
+            data = _json.loads(resp["body"].read())
+            return data.get("embedding")
+
+        vec = await loop.run_in_executor(None, _call)
+        return vec if isinstance(vec, list) and vec else None
+    except Exception:
+        return None
+
+
 async def embed_model_available() -> bool:
-    """True if the embedding model is pulled and reachable."""
+    """True if the embedding capability is available."""
+    if PROVIDER == "bedrock":
+        return await _bedrock_available()
+    # Ollama: check if the specific embed model is pulled
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             r = await client.get("http://localhost:11434/api/tags")

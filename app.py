@@ -53,9 +53,9 @@ async def generate_summary(story_id: int):
         # Another request may have finished it while we waited for the lock.
         if story["summary_status"] in ("done", "skipped"):
             return story
-        if not await summarizer.ollama_available():
-            db.set_summary(story_id, "Waiting for local model (Ollama)…", "pending")
-            _summary_stats["last_error"] = "Ollama unreachable"
+        if not await summarizer.provider_available():
+            db.set_summary(story_id, f"Waiting for {summarizer.PROVIDER}…", "pending")
+            _summary_stats["last_error"] = f"{summarizer.PROVIDER} unreachable"
             return db.get_story(story_id)
         try:
             text, status, source = await summarizer.summarize_story(story)
@@ -194,8 +194,9 @@ async def api_status():
     return {
         "worker": _summary_stats,
         "counts": db.counts(),
-        "ollama": await summarizer.ollama_available(),
-        "model": summarizer.MODEL,
+        "provider": summarizer.PROVIDER,
+        "available": await summarizer.provider_available(),
+        "model": summarizer.BEDROCK_REASON_MODEL if summarizer.PROVIDER == "bedrock" else summarizer.MODEL,
     }
 
 
@@ -222,21 +223,24 @@ async def api_filters_remove(keyword: str):
 # --- model selection -----------------------------------------------------------
 @app.get("/api/models")
 async def api_models():
-    """List installed Ollama models and which ones are currently active."""
+    """List available models for the current provider."""
     installed = await summarizer.list_installed_models()
     return {
         "installed": installed,
-        "model": summarizer.MODEL,
-        "embed_model": summarizer.EMBED_MODEL,
+        "model": summarizer.BEDROCK_REASON_MODEL if summarizer.PROVIDER == "bedrock" else summarizer.MODEL,
+        "embed_model": summarizer.BEDROCK_EMBED_MODEL if summarizer.PROVIDER == "bedrock" else summarizer.EMBED_MODEL,
         "default_model": summarizer.DEFAULT_MODEL,
         "default_embed_model": summarizer.DEFAULT_EMBED_MODEL,
-        "ollama": await summarizer.ollama_available(),
+        "provider": summarizer.PROVIDER,
+        "available": await summarizer.provider_available(),
     }
 
 
 @app.post("/api/models")
 async def api_set_models(payload: dict):
-    """Set the active summary and/or embedding model. Persists in SQLite."""
+    """Set the active summary and/or embedding model. Only applies in Ollama mode."""
+    if summarizer.PROVIDER == "bedrock":
+        raise HTTPException(400, "model selection is only available in Ollama mode (set HN_PROVIDER=ollama)")
     payload = payload or {}
     model = (payload.get("model") or "").strip() or None
     embed_model = (payload.get("embed_model") or "").strip() or None
@@ -294,7 +298,7 @@ async def api_reembed():
     if _reembed_state["running"]:
         raise HTTPException(409, "a re-embed job is already running")
     if not await summarizer.embed_model_available():
-        raise HTTPException(400, "embedding model not available in Ollama")
+        raise HTTPException(400, "embedding model not available")
     _reembed_state.update({"running": True, "done": 0, "total": db.count_embeddable()})
     asyncio.create_task(_reembed_worker())
     return {"started": True, "total": _reembed_state["total"]}
