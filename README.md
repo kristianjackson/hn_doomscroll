@@ -1,18 +1,14 @@
 # 🍊 HN Doom-Scroll
 
-A local dashboard that turns the Hacker News front page into a doom-scroll feed
-with AI-generated summaries of the actual articles. Mark stories as **read**,
-**save** them for later, or flag them **not interested** — and they leave the
-feed. Search everything you've seen by keyword or meaning.
+A personal Hacker News reader that turns the front page into a doom-scroll feed
+with AI-generated article summaries. Mark stories as **read**, **save** them for
+later, or flag them **not interested** — and they leave the feed. Search
+everything you've seen by keyword or meaning.
 
-Everything runs on your machine. SQLite for storage, AWS Bedrock (default) or
-your local Ollama models for summaries, and Ollama for semantic search. No
-external services beyond fetching HN itself, the article pages, and the
-configured AI provider.
+SQLite for storage. Summaries via AWS Bedrock (default) or a local Ollama model.
+Semantic search via a local embedding model. No accounts, no tracking, no ads.
 
 ## Screenshots
-
-The feed, in light and dark themes:
 
 | Light | Dark |
 |-------|------|
@@ -26,170 +22,122 @@ Semantic search ranks results by meaning, with a match score on each:
 
 ![Semantic search results](docs/search-semantic.png)
 
-> Regenerate these anytime with the app running: `python scripts/capture_screenshots.py`
-> (uses Playwright; set `SHOT_DELAY_MS` higher if summaries need longer to fill in).
+> Regenerate screenshots: `python scripts/capture_screenshots.py` (requires a
+> running instance and Playwright Chromium).
 
 ## Stack
 
-- **Backend:** Python + FastAPI
-- **Storage:** SQLite (`hn.db`, created automatically; also caches summaries and
-  semantic-search embeddings)
-- **Summaries:** [AWS Bedrock](https://aws.amazon.com/bedrock/) (default,
-  `google.gemma-3-4b-it`) or local LLM via [Ollama](https://ollama.com)
-  (`llama3.2:3b`) — controlled by the `HN_PROVIDER` env var
-- **Semantic search:** local embedding model via Ollama — `nomic-embed-text`
-  (optional; keyword search works without it)
-- **Article extraction:** `trafilatura`, with a `playwright` headless-Chromium
-  fallback for JS-heavy pages
-- **Frontend:** vanilla HTML/CSS/JS (no build step), infinite scroll
+| Layer | Tech |
+|-------|------|
+| Backend | Python + FastAPI |
+| Storage | SQLite (`hn.db`, auto-created) |
+| Summaries | AWS Bedrock (`google.gemma-3-4b-it`, default) or local Ollama (`llama3.2:3b`) |
+| Embeddings | Local Ollama (`nomic-embed-text`) for semantic search |
+| Article extraction | `trafilatura` + Playwright headless Chromium fallback |
+| Frontend | Vanilla HTML/CSS/JS, infinite scroll, no build step |
 
 ## Quick start
 
-1. Make sure Ollama is running and the models are pulled:
+### Option A — AWS Bedrock (default, fast)
+
+1. Configure AWS credentials with Bedrock access (`aws configure` or env vars).
+2. Double-click **`run.bat`** (or run from a terminal).
+3. Browser opens to http://localhost:8000.
+
+No model downloads required. Summaries generate in ~1 second per story.
+
+### Option B — Local Ollama (fully offline)
+
+1. Install and start [Ollama](https://ollama.com).
+2. Pull models:
    ```
    ollama pull llama3.2:3b
    ollama pull nomic-embed-text   # optional — enables semantic search
    ```
-2. Double-click **`run.bat`** (or run it from a terminal).
-   - First run sets up the virtualenv, installs dependencies, and downloads the
-     Playwright Chromium browser (~150 MB, one time).
-   - Your browser opens to http://localhost:8000.
+3. Set the env var before launching:
+   ```
+   set HN_PROVIDER=ollama
+   run.bat
+   ```
 
-Playwright is optional — if the Chromium download fails or you skip it, the app
-still works; it just falls back to direct fetch and the HN-discussion summary
-for JS-heavy pages instead of rendering them.
+Summaries are slower (CPU-bound) but everything stays on your machine.
 
-That's it. The app fetches the top 50 HN stories on first boot. Summaries are
-generated on demand as you scroll, using your local model.
+### First run
+
+`run.bat` creates the virtualenv, installs dependencies (including `boto3` for
+Bedrock), and downloads Playwright Chromium (~150 MB, one-time). Playwright is
+optional — skip it and the app falls back to direct fetch + HN discussion
+summaries for JS-heavy pages.
 
 ## How it works
 
-- On startup it pulls the HN top stories and stores them in SQLite.
-- **Summaries are generated on demand.** As each card scrolls near the viewport,
-  the app asks the local model to summarize that article — so you see summaries
-  for what you're actually reading within seconds, and stories you never scroll
-  to (or hide) cost no compute. Generation is serialized so the CPU-bound model
-  handles one at a time. Cards show "⏳ Summarizing…" until their summary
-  lands, then update in place. The header bar shows a running count of how many
-  summaries are still pending.
-- **Article extraction is layered.** For each story the app tries, in order:
-  (1) a direct fetch with realistic browser headers, (2) a headless-Chromium
-  render via Playwright for JS-heavy pages, and (3) a fallback that summarizes
-  the **Hacker News discussion** when the article itself can't be retrieved.
-  A small badge shows where a summary came from — 💬 From HN discussion,
-  🌐 Rendered page — or why it couldn't be read — 🔒 Paywalled, 📄 PDF, 🎥 Video.
-- **✓ Read**, **★ Save**, and **✕ Not interested** each move a story out of the
-  feed and remember the choice. Read/saved/hidden stories never reappear in the
-  feed.
-- **It learns from what you skip.** Once you've hidden 10+ stories, the app
-  notices recurring words and domains in them and gently **down-ranks** similar
-  new stories — they sink to the bottom of the feed, dimmed, with a note like
-  "↓ You usually skip stories like this (crypto, coindesk.com)". Nothing is
-  hidden outright, so you stay in control; hover to un-dim. It only acts on
-  patterns it's seen at least twice, so a one-off skip won't bury anything.
-- The **★ Saved**, **Read**, and **Hidden** tabs let you review past choices.
-  Saved is your read-it-later list; from any of these tabs you can send a story
-  back to the feed (or, from Saved, mark it read).
-- **Search** (the box in the header) finds anything you've seen — across the
-  feed, read, saved, and hidden — by title or summary text. So when you remember
-  reading something but not where, just type a keyword. Each result shows a badge
-  for where it currently lives (In feed / Read / Saved / Hidden). Press Escape or
-  the ✕ to return to where you were. Toggle the **kw/ai** button to switch
-  between keyword (exact text) and **semantic** search — semantic finds stories
-  by *meaning*, so "machine learning" surfaces AI stories that never use those
-  exact words. Semantic search uses a local embedding model (`nomic-embed-text`);
-  if it isn't installed, search falls back to keyword automatically.
-- The **↻ Refresh** button pulls the latest front page. Already-seen stories
-  keep their state; only genuinely new stories get added. When auto-refresh is
-  on, this button doubles as a live countdown to the next refresh (see below).
+- Fetches HN top stories on startup and stores them in SQLite.
+- **On-demand summaries.** As each card scrolls near the viewport, the app calls
+  the configured AI provider to summarize that article. The header bar shows a
+  running count of pending summaries. Cards display "⏳ Summarizing…" until
+  their summary arrives, then update in place.
+- **Article extraction is layered.** For each story: (1) direct fetch with
+  browser headers, (2) headless Chromium render for JS-heavy pages, (3) fallback
+  that summarizes the HN discussion. Badges show the source — 💬 From HN
+  discussion, 🌐 Rendered page — or why it couldn't be read — 🔒 Paywalled,
+  📄 PDF, 🎥 Video.
+- **Crash recovery.** If the server is killed mid-summarization, stuck pending
+  stories are automatically reset on the next startup.
+- **✓ Read / ★ Save / ✕ Not interested** — each moves a story out of the feed.
+  Stories never reappear once acted on.
+- **Learns from what you skip.** After 10+ hidden stories, recurring patterns
+  (words, domains) down-rank similar new stories to the bottom of the feed,
+  dimmed with a reason. Nothing is hidden outright.
+- **Search** across everything (feed, read, saved, hidden) by keyword or
+  semantic meaning. Toggle kw/ai in the search box. Semantic search uses local
+  embeddings via Ollama.
+- **Auto-refresh** pulls the latest front page on a timer. The refresh button
+  doubles as a countdown.
 
 ## Settings
 
-Click the **⚙ gear** in the header to open Settings. Everything here is
-remembered between sessions.
+Click **⚙** in the header. Everything persists between sessions.
 
-### Appearance
-Three themes: **Light**, **Dark**, and **System**. Light is the default. System
-follows your OS setting and switches automatically if your device is in dark
-mode. Your choice is saved in the browser and applied before the page paints, so
-there's no flash of the wrong theme on reload.
+- **Themes:** Light, Dark, or System (follows OS preference).
+- **Auto-refresh:** 5–60 min interval, countdown in the refresh button.
+- **Feed size:** 25–200 top stories per refresh.
+- **Keyword filters:** hide stories containing specific words.
+- **Models:** (Ollama mode) pick summary + embedding models from installed list.
+- **Re-embed all:** regenerate all stored embeddings after switching models.
 
-### Auto-refresh
-Toggle on to automatically pull the latest front page on a timer. Pick an
-interval (5, 10, 15, 30, or 60 minutes). Default is 15. The setting is saved in
-the browser, so it persists across reloads.
+## Provider configuration
 
-When auto-refresh is on, the header's **↻ Refresh** button turns into a live
-countdown (`↻ 4:59`) showing time until the next pull. Clicking it refreshes
-immediately and resets the timer. There's no separate timer or button — one
-control does both.
+| Env var | Values | Default |
+|---------|--------|---------|
+| `HN_PROVIDER` | `bedrock` or `ollama` | `bedrock` |
+| `BEDROCK_REGION` | AWS region | `us-east-1` |
+| `BEDROCK_REASON_MODEL` | Bedrock model ID | `google.gemma-3-4b-it` |
 
-### Feed size
-Choose how many top stories to pull from Hacker News on each refresh (25, 50,
-75, 100, 150, or 200). Default is 50. Larger sizes mean more to scroll but also
-more articles for the local model to summarize.
-
-### Keyword filters
-Hide stories you don't care about. Add a word (e.g. `crypto`, `layoffs`) and any
-story whose **title or summary** contains it disappears from the feed — both
-stories already loaded and any pulled in future refreshes. Filters show as
-removable chips; remove one and those stories come back. The status bar shows a
-"N filtered" count when filters are active.
-
-Filters are stored server-side in SQLite, so they apply globally and survive
-restarts. Matching is case-insensitive substring matching at query time, so
-toggling is instant.
-
-## Changing the model
-
-The easiest way is in-app: open **⚙ Settings → Models** and pick from the
-models installed in your Ollama — one dropdown for summaries, one for semantic
-search. The list is populated by polling Ollama, and your choice is saved
-server-side (in SQLite) so it persists across restarts. Only installed models
-are selectable; pull more with `ollama pull <name>` and they'll appear.
-
-Good summary models for a CPU-only machine:
-
-| Model | Notes |
-|-------|-------|
-| `llama3.2:3b` | Default. Fast, solid 2-3 sentence summaries. |
-| `qwen2.5:7b-instruct` | Higher quality, noticeably slower on CPU. |
-| `llama3.2:1b` | Fastest, lower quality. Good if 3b feels sluggish. |
-
-For semantic search the default embedding model is `nomic-embed-text`. If you
-switch the embedding model, use **Re-embed all stories** in the same Models
-section to regenerate every stored embedding with the new model so semantic
-search results stay consistent. It's optional and runs in the background —
-search keeps working while it does.
-
-The starting defaults live in `summarizer.py` (`DEFAULT_MODEL`,
-`DEFAULT_EMBED_MODEL`) if you want to change what a fresh install uses.
+In Ollama mode, models are selected in-app via Settings → Models.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `app.py` | FastAPI app, routes, on-demand summary + embedding generation |
-| `hn.py` | Hacker News API client (top stories + discussion text) |
-| `summarizer.py` | Article extraction, Ollama summarization, embeddings |
-| `db.py` | SQLite schema, queries, search, and dislike-learning |
+| `hn.py` | Hacker News API client |
+| `summarizer.py` | Article extraction, summarization (Bedrock + Ollama), embeddings |
+| `db.py` | SQLite schema, queries, search, dislike-learning |
 | `static/` | Frontend (`index.html`, `style.css`, `app.js`) |
-| `scripts/capture_screenshots.py` | Regenerates the README screenshots |
+| `scripts/capture_screenshots.py` | Screenshot generator for README |
 | `docs/` | README screenshots |
-| `run.bat` | One-click launcher (sets up venv, deps, Playwright) |
-| `push-to-github.bat` | Publishes just this folder to its standalone GitHub repo |
-| `LICENSE` | MIT license |
+| `run.bat` | One-click launcher |
+| `push-to-github.bat` | Publishes to standalone GitHub repo |
+| `requirements.txt` | Python dependencies |
 | `CHANGELOG.md` | Version history |
+| `LICENSE` | MIT |
 
 ## Notes
 
-- When an article can't be fetched (paywall, PDF, or heavily-JS page), the app
-  falls back to summarizing the Hacker News discussion, and each card is badged
-  with where its summary came from (or why it couldn't be read).
-- Ask HN / Show HN text posts have no external article, so they're summarized
-  from the post and discussion directly.
-- The status pill in the header shows a green dot when Ollama is reachable, red
-  when it isn't.
-- Summaries are generated on demand as cards scroll into view, and embeddings
-  for semantic search are computed at the same time (with a bounded backfill
-  when you run a semantic search).
+- The status indicator in the header shows green when the provider is reachable,
+  red when it isn't.
+- Bedrock mode runs summaries concurrently (fast). Ollama mode serializes them
+  (one at a time, to avoid overloading the local model).
+- Semantic search requires the `nomic-embed-text` model in Ollama. If it's not
+  installed, search falls back to keyword automatically.
+- Ask HN / Show HN text posts are summarized from the post + discussion directly.

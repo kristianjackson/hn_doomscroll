@@ -5,6 +5,16 @@ All notable changes to HN Doom-Scroll are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/).
 
+## [1.0.2] - 2026-06-10
+
+### Changed
+- **README rewritten.** Reflects dual-provider architecture (Bedrock default,
+  Ollama optional). Removed outdated "everything runs locally" language. Added
+  provider configuration table, separate quick-start paths for Bedrock and
+  Ollama, and updated feature descriptions.
+- **Screenshots regenerated** with current UI (header queue count, updated card
+  styling).
+
 ## [1.0.1] - 2026-06-10
 
 ### Fixed
@@ -84,6 +94,7 @@ iterated on in a single session.
 - Playwright and the `nomic-embed-text` model are both optional; the app
   degrades gracefully without them.
 
+[1.0.2]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.2
 [1.0.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.1
 [0.1.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v0.1.1
 [0.1.0]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v0.1.0
