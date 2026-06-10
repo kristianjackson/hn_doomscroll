@@ -49,11 +49,47 @@ app = FastAPI(title="HN Doom-Scroll", lifespan=lifespan)
 
 
 async def generate_summary(story_id: int):
-    """Generate one story's summary, serialized against other generations."""
-    # Track this story in the queue if not already present.
+    """Generate a story's summary. Bedrock runs concurrently; Ollama is serialized."""
+    # Track this story in the queue/in-flight set.
     if story_id not in _summary_queue:
         _summary_queue.append(story_id)
 
+    if summarizer.PROVIDER == "bedrock":
+        return await _generate_summary_parallel(story_id)
+    return await _generate_summary_serial(story_id)
+
+
+async def _generate_summary_parallel(story_id: int):
+    """Bedrock path: no lock, concurrent requests are fine."""
+    story = db.get_story(story_id)
+    if not story:
+        _dequeue(story_id)
+        return None
+    if story["summary_status"] in ("done", "skipped"):
+        _dequeue(story_id)
+        return story
+    if not await summarizer.provider_available():
+        db.set_summary(story_id, "Waiting for Bedrock…", "pending")
+        _summary_stats["last_error"] = "bedrock unreachable"
+        _dequeue(story_id)
+        return db.get_story(story_id)
+    try:
+        text, status, source = await summarizer.summarize_story(story)
+        db.set_summary(story_id, text, status, source)
+        if status == "done":
+            _summary_stats["done"] += 1
+            _summary_stats["last_error"] = None
+        if status in ("done", "skipped"):
+            await _embed_story(story_id, story.get("title", ""), text)
+    except Exception as e:
+        _summary_stats["last_error"] = str(e)
+        db.set_summary(story_id, "Summary error.", "failed", "none")
+    _dequeue(story_id)
+    return db.get_story(story_id)
+
+
+async def _generate_summary_serial(story_id: int):
+    """Ollama path: serialize with lock so the local model isn't overloaded."""
     async with _summary_lock:
         global _summary_active
         _summary_active = story_id
@@ -62,13 +98,12 @@ async def generate_summary(story_id: int):
         if not story:
             _dequeue(story_id)
             return None
-        # Another request may have finished it while we waited for the lock.
         if story["summary_status"] in ("done", "skipped"):
             _dequeue(story_id)
             return story
         if not await summarizer.provider_available():
-            db.set_summary(story_id, f"Waiting for {summarizer.PROVIDER}…", "pending")
-            _summary_stats["last_error"] = f"{summarizer.PROVIDER} unreachable"
+            db.set_summary(story_id, "Waiting for Ollama…", "pending")
+            _summary_stats["last_error"] = "ollama unreachable"
             _dequeue(story_id)
             return db.get_story(story_id)
         try:
@@ -77,7 +112,6 @@ async def generate_summary(story_id: int):
             if status == "done":
                 _summary_stats["done"] += 1
                 _summary_stats["last_error"] = None
-            # Embed the title + summary for semantic search (best-effort).
             if status in ("done", "skipped"):
                 await _embed_story(story_id, story.get("title", ""), text)
         except Exception as e:

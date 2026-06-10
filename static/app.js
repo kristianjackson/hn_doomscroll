@@ -51,13 +51,22 @@ function summaryBlock(s) {
     return `<p class="summary">${badge}${escapeHtml(s.summary)}</p>`;
   if (s.summary_status === "failed")
     return `<p class="summary failed">${badge}${escapeHtml(s.summary || "No summary.")}</p>`;
-  // Pending/working: show provider-aware text + queue position
-  const pos = summaryQueue.indexOf(Number(s.id));
-  const queueInfo = pos >= 0
-    ? `<span class="queue-pos">#${pos + 1} of ${summaryQueue.length}</span>`
-    : summaryQueue.length > 0
-      ? `<span class="queue-pos">${summaryQueue.length} in queue</span>`
-      : "";
+  // Pending/working: show provider-aware text + queue/in-flight info
+  let queueInfo = "";
+  if (currentProvider === "bedrock") {
+    // Bedrock runs in parallel — show how many are in-flight total
+    if (summaryQueue.length > 1) {
+      queueInfo = `<span class="queue-pos">${summaryQueue.length} in progress</span>`;
+    }
+  } else {
+    // Ollama is serial — show position in queue
+    const pos = summaryQueue.indexOf(Number(s.id));
+    queueInfo = pos >= 0
+      ? `<span class="queue-pos">#${pos + 1} of ${summaryQueue.length}</span>`
+      : summaryQueue.length > 0
+        ? `<span class="queue-pos">${summaryQueue.length} in queue</span>`
+        : "";
+  }
   const providerLabel = currentProvider === "bedrock" ? "via Bedrock" : "via Ollama";
   return `<p class="summary pending">⏳ Summarizing ${providerLabel}… ${queueInfo}</p>`;
 }
