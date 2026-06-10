@@ -295,6 +295,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
 // --- Search ------------------------------------------------------------------
 const searchInput = document.getElementById("search-input");
 const searchClear = document.getElementById("search-clear");
+const searchReset = document.getElementById("search-reset");
 let searchDebounce = null;
 
 function runSearch(q) {
@@ -306,6 +307,7 @@ function runSearch(q) {
   }
   view = "search";
   searchClear.classList.remove("hidden");
+  searchReset.classList.remove("hidden");
   resetFeed();
 }
 
@@ -313,6 +315,7 @@ function exitSearch() {
   searchQuery = "";
   searchInput.value = "";
   searchClear.classList.add("hidden");
+  searchReset.classList.add("hidden");
   view = prevView || "feed";
   const tab = document.querySelector(`.tab[data-view="${view}"]`);
   if (tab) {
@@ -326,12 +329,14 @@ searchInput.addEventListener("input", () => {
   clearTimeout(searchDebounce);
   const q = searchInput.value;
   searchClear.classList.toggle("hidden", !q);
+  searchReset.classList.toggle("hidden", !q);
   searchDebounce = setTimeout(() => runSearch(q), 250);
 });
 searchInput.addEventListener("keydown", (e) => {
   if (e.key === "Escape") exitSearch();
 });
 searchClear.addEventListener("click", exitSearch);
+searchReset.addEventListener("click", exitSearch);
 
 // Keyword <-> semantic toggle.
 const searchModeBtn = document.getElementById("search-mode");

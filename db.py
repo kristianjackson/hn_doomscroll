@@ -180,30 +180,47 @@ def get_by_state(state: str, limit: int = 100):
 def search(query: str, limit: int = 100):
     """Keyword search across every story, ranked by relevance.
 
-    Matches the query against title and summary (case-insensitive substring).
-    Title matches rank above summary-only matches; ties broken by most-recent.
-    Lets you find something you read/saved/hid earlier.
+    Supports comma-separated queries: "react, vue, angular" finds stories
+    matching ANY of those terms. Title matches rank above summary-only;
+    ties broken by most-recent.
     """
     q = (query or "").strip().lower()
     if not q:
         return []
-    like = f"%{q}%"
+    # Split on commas for multi-term OR search
+    terms = [t.strip() for t in q.split(",") if t.strip()]
+    if not terms:
+        return []
+
+    # Build WHERE clause: (title LIKE ? OR summary LIKE ?) for each term, OR'd
+    where_parts = []
+    where_params = []
+    rank_params = []
+    for t in terms:
+        like = f"%{t}%"
+        where_parts.append("(LOWER(title) LIKE ? OR LOWER(COALESCE(summary,'')) LIKE ?)")
+        where_params.extend([like, like])
+        rank_params.append(like)
+
+    where_clause = " OR ".join(where_parts)
+    rank_expr = "CASE " + " ".join("WHEN LOWER(title) LIKE ? THEN 0" for _ in terms) + " ELSE 1 END"
+
     with _lock:
         rows = _conn.execute(
-            """
+            f"""
             SELECT *,
-                   CASE WHEN LOWER(title) LIKE ? THEN 0 ELSE 1 END AS _rank
+                   {rank_expr} AS _rank
             FROM stories
-            WHERE LOWER(title) LIKE ? OR LOWER(COALESCE(summary,'')) LIKE ?
+            WHERE {where_clause}
             ORDER BY _rank ASC, updated_at DESC
             LIMIT ?
             """,
-            (like, like, like, limit),
+            (*rank_params, *where_params, limit),
         ).fetchall()
     results = []
     for r in rows:
         d = dict(r)
-        d.pop("_rank", None)  # internal ranking helper, not part of the story
+        d.pop("_rank", None)
         results.append(d)
     return results
 

@@ -5,6 +5,28 @@ All notable changes to HN Doom-Scroll are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/).
 
+## [1.1.1] - 2026-06-10
+
+### Added
+- **Comma-separated search.** Type multiple terms separated by commas (e.g.
+  "react, vue, angular") to find stories matching any of those terms. Works
+  in both keyword and semantic search modes.
+- **Clear button** next to the kw/ai toggle — a visible "clear" pill appears
+  when a search is active, providing a second way to exit search (alongside
+  the ✕ and Escape key).
+
+### Fixed
+- **Tab clicks clear search.** Clicking Feed, Saved, Read, or Hidden while a
+  search is active now clears the search input and returns to that tab view.
+
+### Changed
+- Search placeholder updated to: "Search everything… comma-separate multiple
+  terms" to hint at the multi-term feature.
+- Keyword search backend refactored to support OR-matching across comma-
+  separated terms with title-match ranking preserved.
+- Semantic search embeds each comma-separated term independently and takes the
+  max similarity score across terms for ranking.
+
 ## [1.1.0] - 2026-06-10
 
 ### Added
@@ -127,6 +149,7 @@ iterated on in a single session.
 - Playwright and the `nomic-embed-text` model are both optional; the app
   degrades gracefully without them.
 
+[1.1.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.1.1
 [1.1.0]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.1.0
 [1.0.3]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.3
 [1.0.2]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.2

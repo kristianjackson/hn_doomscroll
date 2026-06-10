@@ -208,13 +208,27 @@ async def api_semantic_search(q: str = ""):
     if not qvec:
         return {"stories": db.search(query), "query": q, "mode": "keyword-fallback"}
 
+    # Support comma-separated queries: embed each term, take max similarity
+    terms = [t.strip() for t in query.split(",") if t.strip()]
+    if len(terms) > 1:
+        vecs = []
+        for term in terms:
+            v = await summarizer.embed_text(term)
+            if v:
+                vecs.append(v)
+        if not vecs:
+            return {"stories": db.search(query), "query": q, "mode": "keyword-fallback"}
+    else:
+        vecs = [qvec]
+
     scored = []
     for sid, emb_json in db.get_embeddings(limit=1000):
         try:
             vec = json.loads(emb_json)
         except Exception:
             continue
-        sim = summarizer.cosine_similarity(qvec, vec)
+        # Max similarity across all query terms
+        sim = max(summarizer.cosine_similarity(v, vec) for v in vecs)
         if sim > 0.4:  # drop weak matches
             scored.append((sid, sim))
     scored.sort(key=lambda x: x[1], reverse=True)
