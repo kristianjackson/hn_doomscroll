@@ -14,16 +14,20 @@ Ollama models. No accounts, no tracking, no ads.
 |-------|------|
 | ![Feed, light theme](docs/feed-light.png) | ![Feed, dark theme](docs/feed-dark.png) |
 
-Settings — themes, auto-refresh, feed size, model selection, and keyword filters:
+Settings — provider toggle, model selection, themes, and filters:
 
 ![Settings panel](docs/settings.png)
+
+AI Provider settings — switch between Bedrock and Ollama with model dropdowns:
+
+![Provider settings](docs/settings-provider.png)
 
 Semantic search ranks results by meaning, with a match score on each:
 
 ![Semantic search results](docs/search-semantic.png)
 
-> Regenerate screenshots: `python scripts/capture_screenshots.py` (requires a
-> running instance and Playwright Chromium).
+> Regenerate screenshots: `python scripts/capture_screenshots.py` and
+> `python scripts/capture_extra.py` (requires a running instance and Playwright).
 
 ## Stack
 
@@ -100,12 +104,17 @@ summaries for JS-heavy pages.
 
 Click **⚙** in the header. Everything persists between sessions.
 
+- **AI Provider:** toggle between ☁️ Bedrock (cloud) and 💻 Ollama (local).
+  Switching takes effect immediately for new summaries and searches.
+- **Bedrock Models:** (shown when Bedrock is active) select from curated
+  cost-effective models for summarization (Claude 3 Haiku, Gemma 3 4B, Llama 3
+  8B, Nova Micro) and embeddings (Titan Embed v2, Cohere Embed v3/v4).
+- **Ollama Models:** (shown when Ollama is active) pick from models installed
+  locally. Pull more with `ollama pull <name>`.
 - **Themes:** Light, Dark, or System (follows OS preference).
 - **Auto-refresh:** 5–60 min interval, countdown in the refresh button.
 - **Feed size:** 25–200 top stories per refresh.
 - **Keyword filters:** hide stories containing specific words.
-- **Models:** in Ollama mode, pick summary and embedding models from the
-  installed list. In Bedrock mode, models are configured via env vars.
 - **Re-embed all:** regenerate all stored embeddings after switching models.
 
 ## Provider configuration
@@ -129,6 +138,7 @@ In Ollama mode, models are selected in-app via Settings → Models.
 | `db.py` | SQLite schema, queries, search, dislike-learning |
 | `static/` | Frontend (`index.html`, `style.css`, `app.js`) |
 | `scripts/capture_screenshots.py` | Screenshot generator for README |
+| `scripts/capture_extra.py` | Additional screenshots (semantic search, provider settings) |
 | `docs/` | README screenshots |
 | `run.bat` | One-click launcher |
 | `push-to-github.bat` | Publishes to standalone GitHub repo |

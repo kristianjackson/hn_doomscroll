@@ -33,7 +33,35 @@ OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
 # Bedrock settings
 BEDROCK_REGION = os.environ.get("BEDROCK_REGION", "us-east-1")
 BEDROCK_REASON_MODEL = os.environ.get("BEDROCK_REASON_MODEL", "google.gemma-3-4b-it")
-BEDROCK_EMBED_MODEL = "amazon.titan-embed-text-v2:0"
+BEDROCK_EMBED_MODEL = os.environ.get("BEDROCK_EMBED_MODEL", "amazon.titan-embed-text-v2:0")
+
+# Curated Bedrock model lists (cost-effective options)
+BEDROCK_SUMMARY_MODELS = [
+    {"id": "anthropic.claude-3-haiku-20240307-v1:0", "name": "Claude 3 Haiku", "provider": "Anthropic"},
+    {"id": "google.gemma-3-4b-it", "name": "Gemma 3 4B", "provider": "Google"},
+    {"id": "meta.llama3-8b-instruct-v1:0", "name": "Llama 3 8B", "provider": "Meta"},
+    {"id": "amazon.nova-micro-v1:0", "name": "Nova Micro", "provider": "Amazon"},
+]
+BEDROCK_EMBED_MODELS = [
+    {"id": "amazon.titan-embed-text-v2:0", "name": "Titan Embed v2", "provider": "Amazon"},
+    {"id": "cohere.embed-english-v3", "name": "Embed English v3", "provider": "Cohere"},
+    {"id": "cohere.embed-v4:0", "name": "Embed v4", "provider": "Cohere"},
+]
+
+
+def set_provider(provider: str):
+    """Switch between 'bedrock' and 'ollama' at runtime."""
+    global PROVIDER
+    PROVIDER = provider
+
+
+def set_bedrock_models(reason_model: str | None = None, embed_model: str | None = None):
+    """Update Bedrock model selections at runtime."""
+    global BEDROCK_REASON_MODEL, BEDROCK_EMBED_MODEL
+    if reason_model:
+        BEDROCK_REASON_MODEL = reason_model
+    if embed_model:
+        BEDROCK_EMBED_MODEL = embed_model
 
 # Active models — mutable so they can be changed at runtime via Settings.
 # These only apply in Ollama mode.

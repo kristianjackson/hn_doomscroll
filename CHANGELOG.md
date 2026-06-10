@@ -5,6 +5,26 @@ All notable changes to HN Doom-Scroll are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-06-10
+
+### Added
+- **In-app provider toggle.** Switch between ☁️ Bedrock and 💻 Ollama directly
+  in Settings without restarting the server or setting env vars.
+- **Bedrock model selection UI.** Curated dropdowns for both summarization
+  (Claude 3 Haiku, Gemma 3 4B, Llama 3 8B, Nova Micro) and embeddings (Titan
+  Embed v2, Cohere Embed English v3, Cohere Embed v4).
+- **Live provider status** indicator in Settings showing connection health.
+- **`POST /api/provider` endpoint** for switching providers and models at
+  runtime; choices persist across restarts.
+- **Provider settings screenshot** added to README.
+
+### Changed
+- Provider and model choices are now stored in SQLite and restored on startup
+  (previously only Ollama model names were persisted).
+- Settings UI restructured: provider toggle at the top, with Bedrock and Ollama
+  model sections shown/hidden based on active provider.
+- `BEDROCK_EMBED_MODEL` is now configurable via env var (was hardcoded).
+
 ## [1.0.3] - 2026-06-10
 
 ### Fixed
@@ -107,6 +127,7 @@ iterated on in a single session.
 - Playwright and the `nomic-embed-text` model are both optional; the app
   degrades gracefully without them.
 
+[1.1.0]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.1.0
 [1.0.3]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.3
 [1.0.2]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.2
 [1.0.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.1

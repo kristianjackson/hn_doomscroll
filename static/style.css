@@ -279,6 +279,21 @@ main {
 
 .theme-options { display: flex; gap: 12px; }
 
+.provider-toggle { display: flex; gap: 8px; margin-bottom: 10px; }
+.provider-btn {
+  flex: 1;
+  padding: 10px 16px;
+  background: var(--btn-bg);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s;
+}
+.provider-btn:hover { border-color: var(--accent); }
+.provider-btn.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--btn-bg)); font-weight: 600; }
+
 .theme-card {
   flex: 1;
   background: var(--btn-bg);

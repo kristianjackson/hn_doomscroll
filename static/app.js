@@ -578,15 +578,19 @@ loadFilters();
 setInterval(refreshStatus, 8000);
 
 
-// --- Model selection ---------------------------------------------------------
+// --- Provider & Model selection -----------------------------------------------
 const modelSelect = document.getElementById("model-select");
 const embedModelSelect = document.getElementById("embed-model-select");
+const bedrockSummarySelect = document.getElementById("bedrock-summary-select");
+const bedrockEmbedSelect = document.getElementById("bedrock-embed-select");
+const bedrockSection = document.getElementById("bedrock-models-section");
+const ollamaSection = document.getElementById("ollama-models-section");
+const providerToggle = document.getElementById("provider-toggle");
+const providerStatus = document.getElementById("provider-status");
 const modelsNote = document.getElementById("models-note");
 
 function fillModelSelect(sel, installed, current, fallback) {
   sel.innerHTML = "";
-  // If the current model isn't installed, still show it (flagged) so the
-  // dropdown reflects reality rather than silently switching.
   const options = [...installed];
   if (current && !options.includes(current)) options.unshift(current);
   for (const name of options) {
@@ -606,31 +610,119 @@ function fillModelSelect(sel, installed, current, fallback) {
   }
 }
 
+function fillBedrockSelect(sel, models, currentId) {
+  sel.innerHTML = "";
+  for (const m of models) {
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = `${m.name} (${m.provider})`;
+    if (m.id === currentId) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function showProviderUI(provider) {
+  providerToggle.querySelectorAll(".provider-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.provider === provider);
+  });
+  bedrockSection.style.display = provider === "bedrock" ? "" : "none";
+  ollamaSection.style.display = provider === "ollama" ? "" : "none";
+}
+
 async function loadModels() {
   try {
     const r = await fetch("/api/models");
     const m = await r.json();
-    if (m.provider === "bedrock") {
-      // Bedrock mode: hide model picker, show info only
-      modelsNote.textContent = `Using AWS Bedrock (${m.model}).`;
-      modelSelect.parentElement.style.display = "none";
-      embedModelSelect.parentElement.style.display = "none";
-      return;
+    currentProvider = m.provider;
+    showProviderUI(m.provider);
+
+    // Bedrock dropdowns
+    if (m.bedrock_summary_models) {
+      fillBedrockSelect(bedrockSummarySelect, m.bedrock_summary_models, m.provider === "bedrock" ? m.model : m.bedrock_summary_models[0]?.id);
+      fillBedrockSelect(bedrockEmbedSelect, m.bedrock_embed_models, m.provider === "bedrock" ? m.embed_model : m.bedrock_embed_models[0]?.id);
     }
-    if (!m.available) {
-      modelsNote.textContent = "Ollama isn't reachable — start it to change models.";
-      modelSelect.disabled = embedModelSelect.disabled = true;
-      return;
+
+    // Ollama dropdowns
+    if (m.provider === "ollama") {
+      if (!m.available) {
+        modelsNote.textContent = "Ollama isn't reachable — start it to change models.";
+        modelSelect.disabled = embedModelSelect.disabled = true;
+        return;
+      }
+      fillModelSelect(modelSelect, m.installed, m.model, m.default_model);
+      fillModelSelect(embedModelSelect, m.installed, m.embed_model, m.default_embed_model);
+      modelsNote.textContent =
+        `${m.installed.length} model${m.installed.length === 1 ? "" : "s"} installed. ` +
+        "Pull more with: ollama pull <name>";
+    } else {
+      modelsNote.textContent = "";
     }
-    fillModelSelect(modelSelect, m.installed, m.model, m.default_model);
-    fillModelSelect(embedModelSelect, m.installed, m.embed_model, m.default_embed_model);
-    modelsNote.textContent =
-      `${m.installed.length} model${m.installed.length === 1 ? "" : "s"} installed. ` +
-      "Pull more with: ollama pull <name>";
+
+    providerStatus.textContent = m.available
+      ? `✓ ${m.provider === "bedrock" ? "Bedrock" : "Ollama"} connected`
+      : `✗ ${m.provider === "bedrock" ? "Bedrock" : "Ollama"} unreachable`;
+    providerStatus.style.color = m.available ? "var(--accent)" : "#d33";
   } catch {
     modelsNote.textContent = "Couldn't load models.";
   }
 }
+
+async function switchProvider(provider) {
+  const body = { provider };
+  if (provider === "bedrock") {
+    body.model = bedrockSummarySelect.value;
+    body.embed_model = bedrockEmbedSelect.value;
+  }
+  try {
+    const r = await fetch("/api/provider", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) {
+      const data = await r.json();
+      currentProvider = data.provider;
+      showProviderUI(data.provider);
+      providerStatus.textContent = data.available
+        ? `✓ Switched to ${data.provider === "bedrock" ? "Bedrock" : "Ollama"}`
+        : `✗ ${data.provider === "bedrock" ? "Bedrock" : "Ollama"} unreachable`;
+      providerStatus.style.color = data.available ? "var(--accent)" : "#d33";
+      refreshStatus();
+      loadModels();
+    } else {
+      const err = await r.json();
+      providerStatus.textContent = err.detail || "Switch failed.";
+      providerStatus.style.color = "#d33";
+    }
+  } catch {
+    providerStatus.textContent = "Couldn't reach server.";
+    providerStatus.style.color = "#d33";
+  }
+}
+
+providerToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".provider-btn");
+  if (!btn) return;
+  const provider = btn.dataset.provider;
+  if (provider === currentProvider) return;
+  switchProvider(provider);
+});
+
+bedrockSummarySelect.addEventListener("change", () => {
+  fetch("/api/provider", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: "bedrock", model: bedrockSummarySelect.value }),
+  }).then(() => { modelsNote.textContent = "Bedrock summary model saved."; refreshStatus(); });
+});
+
+bedrockEmbedSelect.addEventListener("change", () => {
+  fetch("/api/provider", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: "bedrock", embed_model: bedrockEmbedSelect.value }),
+  }).then(() => { modelsNote.textContent = "Bedrock embedding model saved."; refreshStatus(); });
+});
 
 async function saveModel(key, value) {
   const body = key === "model" ? { model: value } : { embed_model: value };
@@ -646,7 +738,7 @@ async function saveModel(key, value) {
     } else {
       const err = await r.json();
       modelsNote.textContent = err.detail || "Couldn't set model.";
-      loadModels(); // re-sync dropdowns to actual state
+      loadModels();
     }
   } catch {
     modelsNote.textContent = "Couldn't reach the server.";

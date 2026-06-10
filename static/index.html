@@ -111,8 +111,31 @@
       </section>
 
       <section class="setting-group">
-        <h3>Models</h3>
-        <p class="setting-hint">Choose which models to use for summaries and semantic search. In Bedrock mode, models are configured server-side.</p>
+        <h3>AI Provider</h3>
+        <p class="setting-hint">Choose between cloud (Bedrock) or local (Ollama) for summaries and search.</p>
+        <div class="provider-toggle" id="provider-toggle">
+          <button class="provider-btn active" data-provider="bedrock">☁️ Bedrock</button>
+          <button class="provider-btn" data-provider="ollama">💻 Local (Ollama)</button>
+        </div>
+        <div id="provider-status" class="setting-hint"></div>
+      </section>
+
+      <section class="setting-group" id="bedrock-models-section">
+        <h3>Bedrock Models</h3>
+        <p class="setting-hint">Select cost-effective models for summarization and semantic search.</p>
+        <div class="interval-row">
+          <label for="bedrock-summary-select">Summaries</label>
+          <select id="bedrock-summary-select"></select>
+        </div>
+        <div class="interval-row">
+          <label for="bedrock-embed-select">Embeddings</label>
+          <select id="bedrock-embed-select"></select>
+        </div>
+      </section>
+
+      <section class="setting-group" id="ollama-models-section" style="display:none">
+        <h3>Ollama Models</h3>
+        <p class="setting-hint">Choose from models installed in your local Ollama instance.</p>
         <div class="interval-row">
           <label for="model-select">Summaries</label>
           <select id="model-select"></select>
@@ -125,8 +148,8 @@
           <button id="reembed-btn" class="btn">↻ Re-embed all stories</button>
           <span id="reembed-status" class="reembed-status"></span>
         </div>
-        <p class="setting-hint" id="models-note"></p>
       </section>
+      <p class="setting-hint" id="models-note"></p>
 
       <section class="setting-group">
         <h3>Keyword filters</h3>

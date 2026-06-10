@@ -36,7 +36,19 @@ async def lifespan(_app: FastAPI):
     reset_count = db.reset_pending_summaries()
     if reset_count:
         print(f"[startup] Reset {reset_count} stuck pending summaries.")
-    # Restore any saved model choices (server-side setting).
+    # Restore saved provider choice.
+    saved_provider = db.get_setting("provider")
+    if saved_provider in ("bedrock", "ollama"):
+        summarizer.set_provider(saved_provider)
+    # Restore Bedrock model choices.
+    saved_bedrock_reason = db.get_setting("bedrock_reason_model")
+    saved_bedrock_embed = db.get_setting("bedrock_embed_model")
+    if saved_bedrock_reason or saved_bedrock_embed:
+        summarizer.set_bedrock_models(
+            reason_model=saved_bedrock_reason,
+            embed_model=saved_bedrock_embed,
+        )
+    # Restore Ollama model choices.
     summarizer.set_models(
         model=db.get_setting("model"),
         embed_model=db.get_setting("embed_model"),
@@ -305,6 +317,58 @@ async def api_models():
         "default_model": summarizer.DEFAULT_MODEL,
         "default_embed_model": summarizer.DEFAULT_EMBED_MODEL,
         "provider": summarizer.PROVIDER,
+        "available": await summarizer.provider_available(),
+        "bedrock_summary_models": summarizer.BEDROCK_SUMMARY_MODELS,
+        "bedrock_embed_models": summarizer.BEDROCK_EMBED_MODELS,
+    }
+
+
+@app.post("/api/provider")
+async def api_set_provider(payload: dict):
+    """Switch between bedrock and ollama, optionally setting models."""
+    provider = (payload.get("provider") or "").strip().lower()
+    if provider not in ("bedrock", "ollama"):
+        raise HTTPException(400, "provider must be 'bedrock' or 'ollama'")
+
+    summarizer.set_provider(provider)
+    db.set_setting("provider", provider)
+
+    # Optionally set models in the same request
+    model = (payload.get("model") or "").strip() or None
+    embed_model = (payload.get("embed_model") or "").strip() or None
+
+    if provider == "bedrock":
+        if model:
+            valid_ids = {m["id"] for m in summarizer.BEDROCK_SUMMARY_MODELS}
+            if model not in valid_ids:
+                raise HTTPException(400, f"model '{model}' not in supported Bedrock summary models")
+            summarizer.set_bedrock_models(reason_model=model)
+            db.set_setting("bedrock_reason_model", model)
+        if embed_model:
+            valid_ids = {m["id"] for m in summarizer.BEDROCK_EMBED_MODELS}
+            if embed_model not in valid_ids:
+                raise HTTPException(400, f"model '{embed_model}' not in supported Bedrock embed models")
+            summarizer.set_bedrock_models(embed_model=embed_model)
+            db.set_setting("bedrock_embed_model", embed_model)
+    else:
+        # Ollama mode: validate against installed models
+        if model or embed_model:
+            installed = set(await summarizer.list_installed_models())
+            if model and model not in installed:
+                raise HTTPException(400, f"model '{model}' not installed in Ollama")
+            if embed_model and embed_model not in installed:
+                raise HTTPException(400, f"model '{embed_model}' not installed in Ollama")
+            summarizer.set_models(model=model, embed_model=embed_model)
+            if model:
+                db.set_setting("model", model)
+            if embed_model:
+                db.set_setting("embed_model", embed_model)
+
+    return {
+        "ok": True,
+        "provider": summarizer.PROVIDER,
+        "model": summarizer.BEDROCK_REASON_MODEL if summarizer.PROVIDER == "bedrock" else summarizer.MODEL,
+        "embed_model": summarizer.BEDROCK_EMBED_MODEL if summarizer.PROVIDER == "bedrock" else summarizer.EMBED_MODEL,
         "available": await summarizer.provider_available(),
     }
 
