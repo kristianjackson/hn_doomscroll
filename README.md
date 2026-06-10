@@ -5,8 +5,8 @@ with AI-generated article summaries. Mark stories as **read**, **save** them for
 later, or flag them **not interested** — and they leave the feed. Search
 everything you've seen by keyword or meaning.
 
-SQLite for storage. Summaries via AWS Bedrock (default) or a local Ollama model.
-Semantic search via a local embedding model. No accounts, no tracking, no ads.
+SQLite for storage. Summaries and embeddings via AWS Bedrock (default) or local
+Ollama models. No accounts, no tracking, no ads.
 
 ## Screenshots
 
@@ -32,7 +32,7 @@ Semantic search ranks results by meaning, with a match score on each:
 | Backend | Python + FastAPI |
 | Storage | SQLite (`hn.db`, auto-created) |
 | Summaries | AWS Bedrock (`google.gemma-3-4b-it`, default) or local Ollama (`llama3.2:3b`) |
-| Embeddings | Local Ollama (`nomic-embed-text`) for semantic search |
+| Embeddings | AWS Bedrock (`amazon.titan-embed-text-v2:0`, default) or local Ollama (`nomic-embed-text`) |
 | Article extraction | `trafilatura` + Playwright headless Chromium fallback |
 | Frontend | Vanilla HTML/CSS/JS, infinite scroll, no build step |
 
@@ -44,7 +44,8 @@ Semantic search ranks results by meaning, with a match score on each:
 2. Double-click **`run.bat`** (or run from a terminal).
 3. Browser opens to http://localhost:8000.
 
-No model downloads required. Summaries generate in ~1 second per story.
+No model downloads required. Both summaries and semantic search work immediately
+via Bedrock (Gemma 3 4B for summaries, Titan Embed v2 for search).
 
 ### Option B — Local Ollama (fully offline)
 
@@ -73,7 +74,7 @@ summaries for JS-heavy pages.
 
 - Fetches HN top stories on startup and stores them in SQLite.
 - **On-demand summaries.** As each card scrolls near the viewport, the app calls
-  the configured AI provider to summarize that article. The header bar shows a
+  the configured provider to summarize that article. The header bar shows a
   running count of pending summaries. Cards display "⏳ Summarizing…" until
   their summary arrives, then update in place.
 - **Article extraction is layered.** For each story: (1) direct fetch with
@@ -89,8 +90,9 @@ summaries for JS-heavy pages.
   (words, domains) down-rank similar new stories to the bottom of the feed,
   dimmed with a reason. Nothing is hidden outright.
 - **Search** across everything (feed, read, saved, hidden) by keyword or
-  semantic meaning. Toggle kw/ai in the search box. Semantic search uses local
-  embeddings via Ollama.
+  semantic meaning. Toggle kw/ai in the search box. Semantic search uses the
+  configured provider's embedding model (Titan Embed v2 on Bedrock,
+  `nomic-embed-text` on Ollama).
 - **Auto-refresh** pulls the latest front page on a timer. The refresh button
   doubles as a countdown.
 
@@ -102,7 +104,8 @@ Click **⚙** in the header. Everything persists between sessions.
 - **Auto-refresh:** 5–60 min interval, countdown in the refresh button.
 - **Feed size:** 25–200 top stories per refresh.
 - **Keyword filters:** hide stories containing specific words.
-- **Models:** (Ollama mode) pick summary + embedding models from installed list.
+- **Models:** in Ollama mode, pick summary and embedding models from the
+  installed list. In Bedrock mode, models are configured via env vars.
 - **Re-embed all:** regenerate all stored embeddings after switching models.
 
 ## Provider configuration
@@ -111,7 +114,8 @@ Click **⚙** in the header. Everything persists between sessions.
 |---------|--------|---------|
 | `HN_PROVIDER` | `bedrock` or `ollama` | `bedrock` |
 | `BEDROCK_REGION` | AWS region | `us-east-1` |
-| `BEDROCK_REASON_MODEL` | Bedrock model ID | `google.gemma-3-4b-it` |
+| `BEDROCK_REASON_MODEL` | Bedrock model ID for summaries | `google.gemma-3-4b-it` |
+| `BEDROCK_EMBED_MODEL` | Bedrock model ID for embeddings | `amazon.titan-embed-text-v2:0` |
 
 In Ollama mode, models are selected in-app via Settings → Models.
 
@@ -121,7 +125,7 @@ In Ollama mode, models are selected in-app via Settings → Models.
 |------|---------|
 | `app.py` | FastAPI app, routes, on-demand summary + embedding generation |
 | `hn.py` | Hacker News API client |
-| `summarizer.py` | Article extraction, summarization (Bedrock + Ollama), embeddings |
+| `summarizer.py` | Article extraction, summarization, and embeddings (Bedrock + Ollama) |
 | `db.py` | SQLite schema, queries, search, dislike-learning |
 | `static/` | Frontend (`index.html`, `style.css`, `app.js`) |
 | `scripts/capture_screenshots.py` | Screenshot generator for README |
@@ -138,6 +142,6 @@ In Ollama mode, models are selected in-app via Settings → Models.
   red when it isn't.
 - Bedrock mode runs summaries concurrently (fast). Ollama mode serializes them
   (one at a time, to avoid overloading the local model).
-- Semantic search requires the `nomic-embed-text` model in Ollama. If it's not
-  installed, search falls back to keyword automatically.
+- In Ollama mode, semantic search requires the `nomic-embed-text` model. If it
+  isn't installed, search falls back to keyword automatically.
 - Ask HN / Show HN text posts are summarized from the post + discussion directly.

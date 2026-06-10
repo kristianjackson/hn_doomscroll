@@ -5,6 +5,19 @@ All notable changes to HN Doom-Scroll are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/).
 
+## [1.0.3] - 2026-06-10
+
+### Fixed
+- **README accuracy:** Corrected all claims that semantic search is "always
+  local" or "requires Ollama." Embeddings follow the same provider as
+  summaries — Bedrock Titan Embed v2 by default, Ollama `nomic-embed-text` in
+  offline mode.
+- **Provider config table:** Added `BEDROCK_EMBED_MODEL` env var documentation.
+- **Settings description:** Clarified that model selection UI applies to Ollama
+  mode; Bedrock models are configured via env vars.
+- **Consistency pass:** Aligned README, CHANGELOG, and local steering file to
+  match actual code behavior across all provider references.
+
 ## [1.0.2] - 2026-06-10
 
 ### Changed
@@ -94,6 +107,7 @@ iterated on in a single session.
 - Playwright and the `nomic-embed-text` model are both optional; the app
   degrades gracefully without them.
 
+[1.0.3]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.3
 [1.0.2]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.2
 [1.0.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.1
 [0.1.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v0.1.1
