@@ -93,6 +93,9 @@ summaries for JS-heavy pages.
 - **Learns from what you skip.** After 10+ hidden stories, recurring patterns
   (words, domains) down-rank similar new stories to the bottom of the feed,
   dimmed with a reason. Nothing is hidden outright.
+- **Bulk-hide dimmed stories.** A "Hide all dimmed stories" banner appears
+  between your normal stories and the down-ranked ones. One click hides them
+  all at once.
 - **Search** across everything (feed, read, saved, hidden) by keyword or
   semantic meaning. Toggle kw/ai in the search box. Semantic search uses the
   configured provider's embedding model (Titan Embed v2 on Bedrock,

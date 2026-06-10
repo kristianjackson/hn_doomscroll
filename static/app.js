@@ -158,6 +158,26 @@ async function loadMore() {
   if (stories.length < PAGE) exhausted = true;
 
   feedEl.insertAdjacentHTML("beforeend", stories.map(cardHtml).join(""));
+
+  // Show "Hide all dimmed" banner if there are downranked stories in the feed
+  if (view === "feed" && !feedEl.querySelector("#hide-dimmed-banner")) {
+    const hasDownranked = stories.some(s => s.downranked);
+    if (hasDownranked) {
+      const banner = document.createElement("div");
+      banner.id = "hide-dimmed-banner";
+      banner.className = "hide-dimmed-banner";
+      banner.innerHTML = `<button class="btn" id="hide-dimmed-btn">✕ Hide all dimmed stories</button>`;
+      // Insert before the first downranked card
+      const firstDimmed = feedEl.querySelector(".card.downranked");
+      if (firstDimmed) {
+        feedEl.insertBefore(banner, firstDimmed);
+      } else {
+        feedEl.appendChild(banner);
+      }
+      banner.querySelector("#hide-dimmed-btn").addEventListener("click", hideAllDimmed);
+    }
+  }
+
   // Observe newly-added cards that still need a summary.
   feedEl.querySelectorAll(".card[data-summary-status='pending'], .card[data-summary-status='working'], .card[data-summary-status='failed']")
     .forEach((card) => {
@@ -262,7 +282,6 @@ async function act(id, action) {
   await fetch(`/api/story/${id}/${action}`, { method: "POST" });
   setTimeout(() => {
     if (view === "search") {
-      // Keep results in place but refresh so the state badge updates.
       resetFeed();
       refreshStatus();
       return;
@@ -271,6 +290,22 @@ async function act(id, action) {
     refreshStatus();
     if (feedEl.children.length === 0) resetFeed();
   }, 280);
+}
+
+async function hideAllDimmed() {
+  const btn = document.getElementById("hide-dimmed-btn");
+  if (btn) btn.textContent = "Hiding…";
+  try {
+    const r = await fetch("/api/hide-downranked", { method: "POST" });
+    if (r.ok) {
+      const data = await r.json();
+      feedEl.querySelectorAll(".card.downranked").forEach(c => c.remove());
+      const banner = document.getElementById("hide-dimmed-banner");
+      if (banner) banner.remove();
+      updateStatus(data.counts);
+      refreshStatus();
+    }
+  } catch {}
 }
 
 feedEl.addEventListener("click", (e) => {

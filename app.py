@@ -323,6 +323,16 @@ async def api_action(story_id: int, action: str):
     return {"ok": True, "counts": db.counts()}
 
 
+@app.post("/api/hide-downranked")
+async def api_hide_downranked():
+    """Bulk-hide all stories currently down-ranked in the feed."""
+    feed = db.get_feed(limit=500, offset=0)
+    hidden_ids = [s["id"] for s in feed if s.get("downranked")]
+    for sid in hidden_ids:
+        db.set_state(sid, "hidden")
+    return {"ok": True, "hidden": len(hidden_ids), "counts": db.counts()}
+
+
 @app.get("/api/status")
 async def api_status():
     return {

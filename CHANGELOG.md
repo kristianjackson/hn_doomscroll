@@ -5,6 +5,16 @@ All notable changes to HN Doom-Scroll are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-06-10
+
+### Added
+- **Bulk-hide dimmed stories.** A "✕ Hide all dimmed stories" banner appears
+  in the feed between your normal stories and the down-ranked ones. One click
+  moves all dimmed stories to Hidden at once — no need to dismiss them
+  individually.
+- **`POST /api/hide-downranked` endpoint** for bulk-hiding all currently
+  down-ranked stories in a single request.
+
 ## [1.2.0] - 2026-06-10
 
 ### Changed
@@ -169,6 +179,7 @@ iterated on in a single session.
 - Playwright and the `nomic-embed-text` model are both optional; the app
   degrades gracefully without them.
 
+[1.2.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.2.1
 [1.2.0]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.2.0
 [1.1.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.1.1
 [1.1.0]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.1.0

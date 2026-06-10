@@ -470,6 +470,27 @@ main {
   border-bottom: 1px dashed var(--border);
 }
 
+.hide-dimmed-banner {
+  max-width: 720px;
+  margin: 8px auto 12px;
+  padding: 12px 20px;
+  background: color-mix(in srgb, var(--border) 30%, var(--bg));
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  text-align: center;
+}
+.hide-dimmed-banner .btn {
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  padding: 8px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.hide-dimmed-banner .btn:hover { color: #d33; border-color: #d33; }
+
 /* --- Search box ------------------------------------------------------------ */
 .search-row {
   max-width: 940px;
