@@ -5,6 +5,26 @@ All notable changes to HN Doom-Scroll are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-06-10
+
+### Changed
+- **Semantic search is faster.** Three performance optimizations:
+  1. **Background embedding backfill.** Previously, every semantic search
+     request blocked while embedding up to 40 unembedded stories. Now backfill
+     runs in the background after summaries complete — search returns instantly
+     using whatever embeddings already exist.
+  2. **Query embedding cache.** A 10-second TTL cache deduplicates redundant
+     Bedrock API calls when you're typing (debounce fires multiple searches).
+  3. **Numpy-accelerated cosine similarity.** Vector comparison uses numpy when
+     available (installed by default), falling back to pure Python.
+- **Cached boto3 client.** The Bedrock client is reused across calls instead of
+  being re-created per request (~2s cold-start eliminated after first call).
+- **Lowered similarity threshold** from 0.4 to 0.1 to match Titan Embed v2's
+  tighter score distribution (previously returned 0 results for most queries).
+
+### Added
+- `numpy` added to requirements.txt for vector math acceleration.
+
 ## [1.1.1] - 2026-06-10
 
 ### Added
@@ -149,6 +169,7 @@ iterated on in a single session.
 - Playwright and the `nomic-embed-text` model are both optional; the app
   degrades gracefully without them.
 
+[1.2.0]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.2.0
 [1.1.1]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.1.1
 [1.1.0]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.1.0
 [1.0.3]: https://github.com/kristianjackson/hn_doomscroll/releases/tag/v1.0.3

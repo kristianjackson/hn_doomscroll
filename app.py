@@ -28,6 +28,29 @@ _summary_active: int | None = None  # the story currently being summarized
 # Tracks a running "re-embed all" job so the UI can show progress.
 _reembed_state = {"running": False, "done": 0, "total": 0}
 
+# Query embedding cache (10-second TTL to avoid redundant API calls during typing)
+import time
+_embed_cache: dict[str, tuple[float, list[float]]] = {}
+_EMBED_CACHE_TTL = 10  # seconds
+
+
+async def _cached_embed(text: str) -> list[float] | None:
+    """Embed text with a short TTL cache to deduplicate rapid searches."""
+    now = time.time()
+    key = text.strip().lower()
+    if key in _embed_cache:
+        ts, vec = _embed_cache[key]
+        if now - ts < _EMBED_CACHE_TTL:
+            return vec
+    vec = await summarizer.embed_text(text)
+    if vec:
+        _embed_cache[key] = (now, vec)
+        # Evict old entries to prevent unbounded growth
+        if len(_embed_cache) > 100:
+            oldest = min(_embed_cache, key=lambda k: _embed_cache[k][0])
+            del _embed_cache[oldest]
+    return vec
+
 
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -97,6 +120,8 @@ async def _generate_summary_parallel(story_id: int):
             _summary_stats["last_error"] = None
         if status in ("done", "skipped"):
             await _embed_story(story_id, story.get("title", ""), text)
+            # Trigger background backfill for other unembedded stories
+            asyncio.create_task(_backfill_embeddings())
     except Exception as e:
         _summary_stats["last_error"] = str(e)
         db.set_summary(story_id, "Summary error.", "failed", "none")
@@ -130,6 +155,8 @@ async def _generate_summary_serial(story_id: int):
                 _summary_stats["last_error"] = None
             if status in ("done", "skipped"):
                 await _embed_story(story_id, story.get("title", ""), text)
+                # Trigger background backfill for other unembedded stories
+                asyncio.create_task(_backfill_embeddings())
         except Exception as e:
             _summary_stats["last_error"] = str(e)
             db.set_summary(story_id, "Summary error.", "failed", "none")
@@ -152,6 +179,26 @@ async def _embed_story(story_id: int, title: str, summary: str):
     vec = await summarizer.embed_text(f"{title}\n\n{summary}")
     if vec:
         db.set_embedding(story_id, json.dumps(vec))
+
+
+# Background embedding backfill — runs after summaries complete, not on search.
+_backfill_running = False
+
+
+async def _backfill_embeddings():
+    """Embed stories that have summaries but no embedding yet. Runs in background."""
+    global _backfill_running
+    if _backfill_running:
+        return
+    _backfill_running = True
+    try:
+        batch = db.stories_missing_embedding(limit=20)
+        for s in batch:
+            await _embed_story(s["id"], s.get("title", ""), s.get("summary", ""))
+    except Exception:
+        pass
+    finally:
+        _backfill_running = False
 
 
 async def refresh_stories(limit: int = 50):
@@ -184,10 +231,9 @@ async def api_search(q: str = ""):
 async def api_semantic_search(q: str = ""):
     """Rank stored stories by semantic similarity to the query.
 
-    Embeds the query with the local embedding model and compares against
-    per-story embeddings (cosine). Backfills a bounded number of missing
-    embeddings on the fly. Falls back to keyword search if the embedding
-    model isn't available.
+    Embeds the query with the configured embedding model and compares against
+    per-story embeddings (cosine). Background backfill keeps embeddings fresh.
+    Falls back to keyword search if the embedding model isn't available.
     """
     import json
     query = (q or "").strip()
@@ -195,31 +241,20 @@ async def api_semantic_search(q: str = ""):
         return {"stories": [], "query": q, "mode": "semantic"}
 
     if not await summarizer.embed_model_available():
-        # Graceful fallback so search still works without the embed model.
         return {"stories": db.search(query), "query": q, "mode": "keyword-fallback"}
 
-    # Backfill embeddings for a bounded batch of summarized-but-unembedded
-    # stories so results aren't limited to only what you've already viewed.
-    async with _summary_lock:
-        for s in db.stories_missing_embedding(limit=40):
-            await _embed_story(s["id"], s.get("title", ""), s.get("summary", ""))
+    # Kick off background backfill (non-blocking) if there are unembedded stories
+    asyncio.create_task(_backfill_embeddings())
 
-    qvec = await summarizer.embed_text(query)
-    if not qvec:
-        return {"stories": db.search(query), "query": q, "mode": "keyword-fallback"}
-
-    # Support comma-separated queries: embed each term, take max similarity
+    # Embed query terms (with short TTL cache to avoid redundant calls)
     terms = [t.strip() for t in query.split(",") if t.strip()]
-    if len(terms) > 1:
-        vecs = []
-        for term in terms:
-            v = await summarizer.embed_text(term)
-            if v:
-                vecs.append(v)
-        if not vecs:
-            return {"stories": db.search(query), "query": q, "mode": "keyword-fallback"}
-    else:
-        vecs = [qvec]
+    vecs = []
+    for term in terms:
+        v = await _cached_embed(term)
+        if v:
+            vecs.append(v)
+    if not vecs:
+        return {"stories": db.search(query), "query": q, "mode": "keyword-fallback"}
 
     scored = []
     for sid, emb_json in db.get_embeddings(limit=1000):
@@ -229,7 +264,7 @@ async def api_semantic_search(q: str = ""):
             continue
         # Max similarity across all query terms
         sim = max(summarizer.cosine_similarity(v, vec) for v in vecs)
-        if sim > 0.4:  # drop weak matches
+        if sim > 0.1:  # drop weak matches (Titan Embed v2 has tighter ranges)
             scored.append((sid, sim))
     scored.sort(key=lambda x: x[1], reverse=True)
     top_ids = [sid for sid, _ in scored[:60]]

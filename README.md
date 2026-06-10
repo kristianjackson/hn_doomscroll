@@ -96,7 +96,9 @@ summaries for JS-heavy pages.
 - **Search** across everything (feed, read, saved, hidden) by keyword or
   semantic meaning. Toggle kw/ai in the search box. Semantic search uses the
   configured provider's embedding model (Titan Embed v2 on Bedrock,
-  `nomic-embed-text` on Ollama).
+  `nomic-embed-text` on Ollama). Query embeddings are cached for 10 seconds
+  to avoid redundant API calls during typing. Embedding backfill runs in the
+  background after summaries complete, keeping search responsive.
 - **Auto-refresh** pulls the latest front page on a timer. The refresh button
   doubles as a countdown.
 

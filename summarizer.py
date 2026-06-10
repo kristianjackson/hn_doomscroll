@@ -63,6 +63,19 @@ def set_bedrock_models(reason_model: str | None = None, embed_model: str | None 
     if embed_model:
         BEDROCK_EMBED_MODEL = embed_model
 
+
+# Cached boto3 client to avoid cold-start on every API call (~2s saved)
+_bedrock_client = None
+
+
+def _get_bedrock_client():
+    """Return a reusable bedrock-runtime client."""
+    global _bedrock_client
+    if _bedrock_client is None:
+        import boto3
+        _bedrock_client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+    return _bedrock_client
+
 # Active models — mutable so they can be changed at runtime via Settings.
 # These only apply in Ollama mode.
 MODEL = "llama3.2:3b"
@@ -197,11 +210,10 @@ async def _summarize_ollama(prompt: str) -> str | None:
 async def _summarize_bedrock(prompt: str) -> str | None:
     """Summarize via AWS Bedrock (runs sync boto3 call in executor)."""
     try:
-        import boto3
         loop = asyncio.get_event_loop()
 
         def _call():
-            client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+            client = _get_bedrock_client()
             if "anthropic" in BEDROCK_REASON_MODEL:
                 body = _json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
@@ -414,11 +426,10 @@ async def _embed_ollama(text: str) -> list[float] | None:
 async def _embed_bedrock(text: str) -> list[float] | None:
     """Get embedding from Titan Embed v2 via Bedrock (runs in executor)."""
     try:
-        import boto3
         loop = asyncio.get_event_loop()
 
         def _call():
-            client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+            client = _get_bedrock_client()
             body = _json.dumps({"inputText": text[:8192]})
             resp = client.invoke_model(
                 modelId=BEDROCK_EMBED_MODEL,
@@ -454,9 +465,20 @@ async def embed_model_available() -> bool:
 def cosine_similarity(a: list[float], b: list[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    if na == 0 or nb == 0:
-        return 0.0
-    return dot / (na * nb)
+    try:
+        import numpy as np
+        va = np.array(a, dtype=np.float32)
+        vb = np.array(b, dtype=np.float32)
+        dot = np.dot(va, vb)
+        na = np.linalg.norm(va)
+        nb = np.linalg.norm(vb)
+        if na == 0 or nb == 0:
+            return 0.0
+        return float(dot / (na * nb))
+    except ImportError:
+        dot = sum(x * y for x, y in zip(a, b))
+        na = math.sqrt(sum(x * x for x in a))
+        nb = math.sqrt(sum(y * y for y in b))
+        if na == 0 or nb == 0:
+            return 0.0
+        return dot / (na * nb)
