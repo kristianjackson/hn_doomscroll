@@ -15,6 +15,10 @@ let searchModeNote = "";
 let loading = false;
 let exhausted = false;
 
+// Summary queue tracking
+let summaryQueue = [];   // ordered array of story IDs in the queue
+let currentProvider = "bedrock"; // updated from /api/status
+
 function domain(url) {
   if (!url) return "news.ycombinator.com";
   try { return new URL(url).hostname.replace(/^www\./, ""); }
@@ -47,7 +51,15 @@ function summaryBlock(s) {
     return `<p class="summary">${badge}${escapeHtml(s.summary)}</p>`;
   if (s.summary_status === "failed")
     return `<p class="summary failed">${badge}${escapeHtml(s.summary || "No summary.")}</p>`;
-  return `<p class="summary pending">⏳ summarizing locally…</p>`;
+  // Pending/working: show provider-aware text + queue position
+  const pos = summaryQueue.indexOf(Number(s.id));
+  const queueInfo = pos >= 0
+    ? `<span class="queue-pos">#${pos + 1} of ${summaryQueue.length}</span>`
+    : summaryQueue.length > 0
+      ? `<span class="queue-pos">${summaryQueue.length} in queue</span>`
+      : "";
+  const providerLabel = currentProvider === "bedrock" ? "via Bedrock" : "via Ollama";
+  return `<p class="summary pending">⏳ Summarizing ${providerLabel}… ${queueInfo}</p>`;
 }
 
 function escapeHtml(t) {
@@ -184,6 +196,12 @@ async function requestSummary(card) {
     card.dataset.summaryStatus = s.summary_status;
     const cur = card.querySelector(".summary");
     if (cur) cur.outerHTML = summaryBlock(s);
+    // Update queue from response
+    if (typeof s.queue_size === "number" && s.queue_size === 0) {
+      summaryQueue = [];
+    }
+    // Refresh pending cards to update their queue positions
+    refreshPendingCards();
     // If the model wasn't ready, leave it observed so it retries on next view.
     if (s.summary_status === "done" || s.summary_status === "skipped" ||
         s.summary_status === "failed") {
@@ -195,6 +213,31 @@ async function requestSummary(card) {
     inFlight.delete(id);
   }
 }
+
+// Poll the queue endpoint to keep position indicators fresh on pending cards.
+async function pollQueue() {
+  try {
+    const r = await fetch("/api/queue");
+    if (!r.ok) return;
+    const data = await r.json();
+    summaryQueue = data.queue || [];
+    refreshPendingCards();
+  } catch {}
+}
+
+function refreshPendingCards() {
+  feedEl.querySelectorAll('.card[data-summary-status="pending"], .card[data-summary-status="working"]')
+    .forEach((card) => {
+      const cur = card.querySelector(".summary.pending");
+      if (cur) cur.outerHTML = summaryBlock({ id: card.dataset.id, summary_status: card.dataset.summaryStatus });
+    });
+}
+
+// Poll queue every 2s while there are pending cards visible.
+setInterval(() => {
+  const hasPending = feedEl.querySelector('.card[data-summary-status="pending"], .card[data-summary-status="working"]');
+  if (hasPending) pollQueue();
+}, 2000);
 
 const summaryObserver = new IntersectionObserver((entries) => {
   for (const entry of entries) {
@@ -339,6 +382,7 @@ async function refreshStatus() {
     const r = await fetch("/api/status");
     const s = await r.json();
     statusEl.dataset.available = s.available ? "ok" : "off";
+    currentProvider = s.provider || "bedrock";
     updateStatus(s.counts);
   } catch {}
 }

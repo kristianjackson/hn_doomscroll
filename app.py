@@ -21,6 +21,10 @@ STATIC_DIR = Path(__file__).parent / "static"
 _summary_lock = asyncio.Lock()
 _summary_stats = {"done": 0, "last_error": None}
 
+# Queue tracking: ordered list of story IDs waiting for or actively generating.
+_summary_queue: list[int] = []
+_summary_active: int | None = None  # the story currently being summarized
+
 # Tracks a running "re-embed all" job so the UI can show progress.
 _reembed_state = {"running": False, "done": 0, "total": 0}
 
@@ -46,16 +50,26 @@ app = FastAPI(title="HN Doom-Scroll", lifespan=lifespan)
 
 async def generate_summary(story_id: int):
     """Generate one story's summary, serialized against other generations."""
+    # Track this story in the queue if not already present.
+    if story_id not in _summary_queue:
+        _summary_queue.append(story_id)
+
     async with _summary_lock:
+        global _summary_active
+        _summary_active = story_id
+
         story = db.get_story(story_id)
         if not story:
+            _dequeue(story_id)
             return None
         # Another request may have finished it while we waited for the lock.
         if story["summary_status"] in ("done", "skipped"):
+            _dequeue(story_id)
             return story
         if not await summarizer.provider_available():
             db.set_summary(story_id, f"Waiting for {summarizer.PROVIDER}…", "pending")
             _summary_stats["last_error"] = f"{summarizer.PROVIDER} unreachable"
+            _dequeue(story_id)
             return db.get_story(story_id)
         try:
             text, status, source = await summarizer.summarize_story(story)
@@ -69,7 +83,17 @@ async def generate_summary(story_id: int):
         except Exception as e:
             _summary_stats["last_error"] = str(e)
             db.set_summary(story_id, "Summary error.", "failed", "none")
+        _dequeue(story_id)
+        _summary_active = None
     return db.get_story(story_id)
+
+
+def _dequeue(story_id: int):
+    """Remove a story from the queue after completion."""
+    try:
+        _summary_queue.remove(story_id)
+    except ValueError:
+        pass
 
 
 async def _embed_story(story_id: int, title: str, summary: str):
@@ -163,6 +187,7 @@ async def api_summarize(story_id: int):
         "summary": story["summary"],
         "summary_status": story["summary_status"],
         "summary_source": story.get("summary_source", ""),
+        "queue_size": len(_summary_queue),
     }
 
 
@@ -170,6 +195,16 @@ async def api_summarize(story_id: int):
 async def api_refresh(limit: int = 50):
     n = await refresh_stories(limit=limit)
     return {"fetched": n, "counts": db.counts()}
+
+
+@app.get("/api/queue")
+async def api_queue():
+    """Return current summary queue state for the frontend."""
+    return {
+        "queue": list(_summary_queue),
+        "size": len(_summary_queue),
+        "active": _summary_active,
+    }
 
 
 @app.post("/api/story/{story_id}/{action}")
